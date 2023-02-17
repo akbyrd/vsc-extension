@@ -3,6 +3,11 @@
   "displayName": "akbyrd-vsc-extension",
   "description": "Useful commands and a dark Material theme with more precise syntax colors",
   "version": "0.0.1",
+  "publisher": "akbyrd",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/akbyrd/vsc-extension"
+  },
   "engines": {
     "vscode": "^1.75.0"
   },
@@ -10,6 +15,7 @@
     "Other"
   ],
   "main": "./out/extension.js",
+  "activationEvents": [],
   "contributes": {
     "commands": [
       {
@@ -31,6 +37,10 @@
       {
         "command": "akbyrd.editor.cursorSelectTo.blankLine.next.center",
         "title": "Select to Next Blank Line"
+      },
+      {
+        "command": "akbyrd.editor.deleteLines.up",
+        "title": "Delete Line Above Cursor"
       }
     ],
     "menus": {
@@ -53,6 +63,10 @@
         },
         {
           "command": "akbyrd.editor.cursorSelectTo.blankLine.next.center",
+          "when": "activeEditor"
+        },
+        {
+          "command": "akbyrd.editor.deleteLines.up",
           "when": "activeEditor"
         }
       ]

@@ -42,6 +42,25 @@ export function activate(context: vscode.ExtensionContext)
 			centerCursor(textEditor);
 		});
 	context.subscriptions.push(disposable);
+
+	disposable = vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteLines.up",
+		async (textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit) =>
+		{
+			let deletedLines = new Set<number>;
+			for (const selection of textEditor.selections)
+			{
+				const selectedLine = selection.start.line;
+				const lineToDelete = Math.max(selectedLine - 1, 0)
+
+				if (!deletedLines.has(lineToDelete))
+				{
+					deletedLines.add(lineToDelete);
+					const textLine = textEditor.document.lineAt(lineToDelete);
+					edit.delete(textLine.rangeIncludingLineBreak);
+				}
+			}
+		});
+	context.subscriptions.push(disposable);
 }
 
 function arraysEqual(a1 : readonly any[], a2 : readonly any[]) : boolean
