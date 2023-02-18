@@ -144,7 +144,7 @@ enum Direction
 	Next
 };
 
-let symbols: vscode.SymbolInformation[] | undefined;
+let symbols: vscode.DocumentSymbol[] | undefined;
 
 const symbolHighlightDecoration: vscode.TextEditorDecorationType = vscode.window.createTextEditorDecorationType({
 	backgroundColor: new vscode.ThemeColor("editor.rangeHighlightBackground"),
@@ -159,7 +159,7 @@ async function cursorMoveToSymbol(textEditor: vscode.TextEditor, direction: Dire
 {
 	if (!symbols)
 	{
-		symbols = await vscode.commands.executeCommand<vscode.SymbolInformation[]>(
+		symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
 			"vscode.executeDocumentSymbolProvider", textEditor.document.uri);
 	}
 
@@ -170,50 +170,68 @@ async function cursorMoveToSymbol(textEditor: vscode.TextEditor, direction: Dire
 	const symbolSelections: vscode.Selection[] = [];
 	for (const selection of textEditor.selections)
 	{
-		let currSymbol: vscode.SymbolInformation | undefined;
-		for (const symbol of symbols)
+		function findCurrentSymbol(symbols: vscode.DocumentSymbol[])
 		{
-			const containsCursor = symbol.location.range.contains(selection.active);
-			const isAfterCurr = !currSymbol || symbol.location.range.start.isAfter(currSymbol.location.range.start);
+			for (const symbol of symbols)
+			{
+				const containsCursor = symbol.range.contains(selection.active);
+				const isAfterCurr = !currSymbol || symbol.range.start.isAfter(currSymbol.range.start);
 
-			if (containsCursor && isAfterCurr)
-				currSymbol = symbol;
+				if (containsCursor && isAfterCurr)
+					currSymbol = symbol;
+
+				findCurrentSymbol(symbol.children);
+			}
 		}
 
-		let prevSymbol: vscode.SymbolInformation | undefined;
-		let nextSymbol: vscode.SymbolInformation | undefined;
-		for (const symbol of symbols)
+		function findNearestSymbols(symbols: vscode.DocumentSymbol[])
 		{
-			const isCurrSymbol = symbol == currSymbol;
+			for (const symbol of symbols)
+			{
+				const isCurrSymbol = symbol == currSymbol;
+				const isVariable = symbol.kind == vscode.SymbolKind.Variable;
 
-			const isAfterCursor = symbol.location.range.start.isAfterOrEqual(selection.active);
-			const isBeforeNextSymbol = !nextSymbol || symbol.location.range.start.isBefore(nextSymbol.location.range.start);
+				if (!(isCurrSymbol || isVariable))
+				{
+					const isAfterCursor = symbol.range.start.isAfterOrEqual(selection.active);
+					const isBeforeNextSymbol = !nextSymbol || symbol.range.start.isBefore(nextSymbol.range.start);
 
-			const isBeforeCursor = symbol.location.range.start.isBeforeOrEqual(selection.active);
-			const isAfterPrevSymbol = !prevSymbol || symbol.location.range.start.isAfter(prevSymbol.location.range.start);
+					const isBeforeCursor = symbol.range.start.isBeforeOrEqual(selection.active);
+					const isAfterPrevSymbol = !prevSymbol || symbol.range.start.isAfter(prevSymbol.range.start);
 
-			if (!isCurrSymbol && isAfterCursor && isBeforeNextSymbol)
-				nextSymbol = symbol;
+					if (isAfterCursor && isBeforeNextSymbol)
+						nextSymbol = symbol;
 
-			if (!isCurrSymbol && isBeforeCursor && isAfterPrevSymbol)
-				prevSymbol = symbol;
+					if (isBeforeCursor && isAfterPrevSymbol)
+						prevSymbol = symbol;
+				}
+
+				findNearestSymbols(symbol.children);
+			}
 		}
+
+		let currSymbol: vscode.DocumentSymbol | undefined;
+		findCurrentSymbol(symbols);
+
+		let prevSymbol: vscode.DocumentSymbol | undefined;
+		let nextSymbol: vscode.DocumentSymbol | undefined;
+		findNearestSymbols(symbols);
 
 		if (direction == Direction.Previous && prevSymbol)
 		{
-			symbolRanges.push(prevSymbol.location.range);
+			symbolRanges.push(prevSymbol.range);
 			const symbolSelection = select
-				? new vscode.Selection(selection.anchor, prevSymbol.location.range.start)
-				: new vscode.Selection(prevSymbol.location.range.start, prevSymbol.location.range.start);
+				? new vscode.Selection(selection.anchor, prevSymbol.range.start)
+				: new vscode.Selection(prevSymbol.range.start, prevSymbol.range.start);
 			symbolSelections.push(symbolSelection);
 		}
 
 		if (direction == Direction.Next && nextSymbol)
 		{
-			symbolRanges.push(nextSymbol.location.range);
+			symbolRanges.push(nextSymbol.range);
 			const symbolSelection = select
-				? new vscode.Selection(selection.anchor, nextSymbol.location.range.start)
-				: new vscode.Selection(nextSymbol.location.range.start, nextSymbol.location.range.start);
+				? new vscode.Selection(selection.anchor, nextSymbol.range.start)
+				: new vscode.Selection(nextSymbol.range.start, nextSymbol.range.start);
 			symbolSelections.push(symbolSelection);
 		}
 	}
