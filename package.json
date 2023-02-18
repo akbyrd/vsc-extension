@@ -39,8 +39,20 @@
         "title": "Select to Next Blank Line"
       },
       {
-        "command": "akbyrd.editor.deleteLines.up",
+        "command": "akbyrd.editor.cursorMoveTo.symbol.prev",
+        "title": "Move to Previous Symbol"
+      },
+      {
+        "command": "akbyrd.editor.cursorMoveTo.symbol.next",
+        "title": "Move to Previous Symbol"
+      },
+      {
+        "command": "akbyrd.editor.deleteLine.prev",
         "title": "Delete Line Above Cursor"
+      },
+      {
+        "command": "akbyrd.editor.deleteLine.next",
+        "title": "Delete Line Below Cursor"
       }
     ],
     "menus": {
@@ -66,7 +78,19 @@
           "when": "activeEditor"
         },
         {
-          "command": "akbyrd.editor.deleteLines.up",
+          "command": "akbyrd.editor.cursorMoveTo.symbol.prev",
+          "when": "activeEditor"
+        },
+        {
+          "command": "akbyrd.editor.cursorMoveTo.symbol.next",
+          "when": "activeEditor"
+        },
+        {
+          "command": "akbyrd.editor.deleteLine.prev",
+          "when": "activeEditor"
+        },
+        {
+          "command": "akbyrd.editor.deleteLine.next",
           "when": "activeEditor"
         }
       ]
