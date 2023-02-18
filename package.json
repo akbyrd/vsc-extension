@@ -47,6 +47,14 @@
         "title": "Move to Previous Symbol"
       },
       {
+        "command": "akbyrd.editor.cursorSelectTo.symbol.prev",
+        "title": "Select to Previous Symbol"
+      },
+      {
+        "command": "akbyrd.editor.cursorSelectTo.symbol.next",
+        "title": "Select to Previous Symbol"
+      },
+      {
         "command": "akbyrd.editor.deleteLine.prev",
         "title": "Delete Line Above Cursor"
       },
@@ -83,6 +91,14 @@
         },
         {
           "command": "akbyrd.editor.cursorMoveTo.symbol.next",
+          "when": "activeEditor"
+        },
+        {
+          "command": "akbyrd.editor.cursorSelectTo.symbol.prev",
+          "when": "activeEditor"
+        },
+        {
+          "command": "akbyrd.editor.cursorSelectTo.symbol.next",
           "when": "activeEditor"
         },
         {

@@ -61,6 +61,20 @@ export function activate(context: vscode.ExtensionContext)
 		});
 	context.subscriptions.push(disposable);
 
+	disposable = vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.symbol.prev",
+		async (textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit) =>
+		{
+			await cursorMoveToSymbol(textEditor, Direction.Previous, true);
+		});
+	context.subscriptions.push(disposable);
+
+	disposable = vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.symbol.next",
+		async (textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit) =>
+		{
+			await cursorMoveToSymbol(textEditor, Direction.Next, true);
+		});
+	context.subscriptions.push(disposable);
+
 	disposable = vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteLine.prev",
 		(textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit) =>
 		{
@@ -153,6 +167,7 @@ async function cursorMoveToSymbol(textEditor: vscode.TextEditor, direction: Dire
 		return;
 
 	const symbolRanges: vscode.Range[] = [];
+	const symbolSelections: vscode.Selection[] = [];
 	for (const selection of textEditor.selections)
 	{
 		let currSymbol: vscode.SymbolInformation | undefined;
@@ -185,18 +200,34 @@ async function cursorMoveToSymbol(textEditor: vscode.TextEditor, direction: Dire
 		}
 
 		if (direction == Direction.Previous && prevSymbol)
+		{
 			symbolRanges.push(prevSymbol.location.range);
+			const symbolSelection = select
+				? new vscode.Selection(selection.anchor, prevSymbol.location.range.start)
+				: new vscode.Selection(prevSymbol.location.range.start, prevSymbol.location.range.start);
+			symbolSelections.push(symbolSelection);
+		}
 
 		if (direction == Direction.Next && nextSymbol)
+		{
 			symbolRanges.push(nextSymbol.location.range);
+			const symbolSelection = select
+				? new vscode.Selection(selection.anchor, nextSymbol.location.range.start)
+				: new vscode.Selection(nextSymbol.location.range.start, nextSymbol.location.range.start);
+			symbolSelections.push(symbolSelection);
+		}
 	}
 
 	if (symbolRanges.length)
 	{
-		textEditor.selections = symbolRanges.map(sr => new vscode.Selection(sr.start, sr.start));
-		// HACK: This is a workaround for https://github.com/microsoft/vscode/issues/106209
-		await sleep(4);
-		textEditor.setDecorations(symbolHighlightDecoration, symbolRanges);
-		textEditor.revealRange(textEditor.selection);
+		textEditor.selections = symbolSelections;
+		textEditor.revealRange(symbolRanges[0]);
+
+		if (!select)
+		{
+			// HACK: This is a workaround for https://github.com/microsoft/vscode/issues/106209
+			await sleep(4);
+			textEditor.setDecorations(symbolHighlightDecoration, symbolRanges);
+		}
 	}
 }
