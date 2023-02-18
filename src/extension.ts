@@ -47,8 +47,6 @@ export function activate(context: vscode.ExtensionContext)
 		});
 	context.subscriptions.push(disposable);
 
-	// TODO: Use SymbolInformation. No need for hierarchy
-	// TODO: Requests stack up
 	disposable = vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.symbol.prev",
 		async (textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit) =>
 		{
@@ -64,7 +62,7 @@ export function activate(context: vscode.ExtensionContext)
 	context.subscriptions.push(disposable);
 
 	disposable = vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteLine.prev",
-		async (textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit) =>
+		(textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit) =>
 		{
 			const deletedLines = new Set<number>;
 			for (const selection of textEditor.selections)
@@ -83,7 +81,7 @@ export function activate(context: vscode.ExtensionContext)
 	context.subscriptions.push(disposable);
 
 	disposable = vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteLine.next",
-		async (textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit) =>
+		(textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit) =>
 		{
 			const deletedLines = new Set<number>;
 			for (const selection of textEditor.selections)
@@ -132,7 +130,7 @@ enum Direction
 	Next
 };
 
-let symbols: vscode.DocumentSymbol[] | undefined;
+let symbols: vscode.SymbolInformation[] | undefined;
 
 const symbolHighlightDecoration: vscode.TextEditorDecorationType = vscode.window.createTextEditorDecorationType({
 	backgroundColor: new vscode.ThemeColor("editor.rangeHighlightBackground"),
@@ -147,7 +145,7 @@ async function cursorMoveToSymbol(textEditor: vscode.TextEditor, direction: Dire
 {
 	if (!symbols)
 	{
-		symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+		symbols = await vscode.commands.executeCommand<vscode.SymbolInformation[]>(
 			"vscode.executeDocumentSymbolProvider", textEditor.document.uri);
 	}
 
@@ -157,62 +155,48 @@ async function cursorMoveToSymbol(textEditor: vscode.TextEditor, direction: Dire
 	const symbolRanges: vscode.Range[] = [];
 	for (const selection of textEditor.selections)
 	{
-		function findCurrentSymbol(symbols: vscode.DocumentSymbol[])
+		let currSymbol: vscode.SymbolInformation | undefined;
+		for (const symbol of symbols)
 		{
-			for (const symbol of symbols)
-			{
-				const containsCursor = symbol.range.contains(selection.active);
-				const isAfterCurr = !currSymbol || symbol.range.start.isAfter(currSymbol.range.start);
+			const containsCursor = symbol.location.range.contains(selection.active);
+			const isAfterCurr = !currSymbol || symbol.location.range.start.isAfter(currSymbol.location.range.start);
 
-				if (containsCursor && isAfterCurr)
-					currSymbol = symbol;
-
-				findCurrentSymbol(symbol.children);
-			}
+			if (containsCursor && isAfterCurr)
+				currSymbol = symbol;
 		}
 
-		function findClosestSymbols(symbols: vscode.DocumentSymbol[])
+		let prevSymbol: vscode.SymbolInformation | undefined;
+		let nextSymbol: vscode.SymbolInformation | undefined;
+		for (const symbol of symbols)
 		{
-			for (const symbol of symbols)
-			{
-				const isCurrSymbol = symbol == currSymbol;
+			const isCurrSymbol = symbol == currSymbol;
 
-				const isAfterCursor = symbol.range.start.isAfterOrEqual(selection.active);
-				const isBeforeNextSymbol = !nextSymbol || symbol.range.start.isBefore(nextSymbol.range.start);
+			const isAfterCursor = symbol.location.range.start.isAfterOrEqual(selection.active);
+			const isBeforeNextSymbol = !nextSymbol || symbol.location.range.start.isBefore(nextSymbol.location.range.start);
 
-				const isBeforeCursor = symbol.range.start.isBeforeOrEqual(selection.active);
-				const isAfterPrevSymbol = !prevSymbol || symbol.range.start.isAfter(prevSymbol.range.start);
+			const isBeforeCursor = symbol.location.range.start.isBeforeOrEqual(selection.active);
+			const isAfterPrevSymbol = !prevSymbol || symbol.location.range.start.isAfter(prevSymbol.location.range.start);
 
-				if (!isCurrSymbol && isAfterCursor && isBeforeNextSymbol)
-					nextSymbol = symbol;
+			if (!isCurrSymbol && isAfterCursor && isBeforeNextSymbol)
+				nextSymbol = symbol;
 
-				if (!isCurrSymbol && isBeforeCursor && isAfterPrevSymbol)
-					prevSymbol = symbol;
-
-				findClosestSymbols(symbol.children);
-			}
+			if (!isCurrSymbol && isBeforeCursor && isAfterPrevSymbol)
+				prevSymbol = symbol;
 		}
-
-		let currSymbol: vscode.DocumentSymbol | undefined;
-		let prevSymbol: vscode.DocumentSymbol | undefined;
-		let nextSymbol: vscode.DocumentSymbol | undefined;
-		findCurrentSymbol(symbols);
-		findClosestSymbols(symbols);
 
 		if (direction == Direction.Previous && prevSymbol)
-			symbolRanges.push(prevSymbol.range);
+			symbolRanges.push(prevSymbol.location.range);
 
 		if (direction == Direction.Next && nextSymbol)
-			symbolRanges.push(nextSymbol.range);
+			symbolRanges.push(nextSymbol.location.range);
 	}
 
 	if (symbolRanges.length)
 	{
 		textEditor.selections = symbolRanges.map(sr => new vscode.Selection(sr.start, sr.start));
-		await sleep(1);
+		// HACK: This is a workaround for https://github.com/microsoft/vscode/issues/106209
+		await sleep(4);
 		textEditor.setDecorations(symbolHighlightDecoration, symbolRanges);
 		textEditor.revealRange(textEditor.selection);
 	}
 }
-
-// TODO: Show friendly name for commands in keybindings GUI
