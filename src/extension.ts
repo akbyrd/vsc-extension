@@ -98,7 +98,7 @@ export function activate(context: vscode.ExtensionContext)
 	disposable = vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteLine.next",
 		(textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit) =>
 		{
-			deleteLineNext(textEditor);
+			deleteLineNext(textEditor, edit);
 		});
 	context.subscriptions.push(disposable);
 
@@ -144,12 +144,12 @@ function sleep(ms: number) {
 	return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function logPosition(start : vscode.Position, end : vscode.Position)
+function logRangePosition(start : vscode.Position, end : vscode.Position)
 {
 	console.log("%d/%d -> %d/%d", start.line, start.character, end.line, end.character);
 }
 
-function logPosition(range : vscode.Range)
+function logRange(range : vscode.Range)
 {
 	console.log("%d/%d -> %d/%d", range.start.line, range.start.character, range.end.line, range.end.character);
 }
@@ -259,87 +259,26 @@ async function cursorMoveToSymbol(textEditor: vscode.TextEditor, direction: Dire
 	}
 }
 
-function deleteLineNext(textEditor: vscode.TextEditor)
+function deleteLineNext(textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit)
 {
 	const deletedLines = new Set<number>;
-	const newSelections = new Array<vscode.Selection>;
-
-	textEditor.edit((edit: vscode.TextEditorEdit) =>
+	for (const selection of textEditor.selections)
 	{
-		// NOTE: Overlapping delete ranges cause the entire operation to fail silently
-		// NOTE: Selections are not sorted
+		if (selection.end.line == textEditor.document.lineCount - 1)
+			continue;
 
-		// TODO: Switch to sorted insert and set selection in a second pass
-		// TODO: Try to write tests
-
-		const selections = [...textEditor.selections];
-		selections.sort((a, b) => { return a.end.compareTo(b.end) });
-
-		for (const selection of selections)
+		if (!deletedLines.has(selection.end.line + 1))
 		{
-			if (selection.end.line == textEditor.document.lineCount - 1)
-			{
-				const newAnchor = selection.anchor.translate(-deletedLines.size);
-				const newActive = selection.active.translate(-deletedLines.size);
-				newSelections.push(new vscode.Selection(newAnchor, newActive));
-				continue;
-			}
+			deletedLines.add(selection.end.line + 1);
 
-			const startLineNum = selection.start.line;
-			const endLineNum = selection.end.line;
-			const nextLineNum = selection.end.line + 1;
+			const endLine = textEditor.document.lineAt(selection.end.line);
+			const nextLine = textEditor.document.lineAt(selection.end.line + 1);
 
-			const endLine = textEditor.document.lineAt(endLineNum);
-			const nextLine = textEditor.document.lineAt(nextLineNum);
+			const newline = new vscode.Range(endLine.range.end, endLine.rangeIncludingLineBreak.end);
+			const toDelete = newline.union(nextLine.range);
 
-			if (!deletedLines.has(nextLineNum))
-			{
-				deletedLines.add(nextLineNum);
-
-				const newline = new vscode.Range(endLine.range.end, endLine.rangeIncludingLineBreak.end);
-				const toDelete = newline.union(nextLine.range);
-
-				console.assert(!toDelete.isEmpty);
-				edit.delete(toDelete);
-			}
-
-			const deletedStart = deletedLines.has(startLineNum);
-			const deletedSecond = deletedLines.has(startLineNum + 1) && !selection.isSingleLine;
-			const deletedEnd = deletedLines.has(endLineNum);
-
-			if (!(deletedStart && deletedEnd))
-			{
-				let newStartLineNum = startLineNum - deletedLines.size + 1 + (+deletedSecond);
-				let newStartCharNum = selection.start.character;
-				if (deletedStart)
-				{
-					newStartLineNum += 1;
-					newStartCharNum = 0;
-				}
-
-				let newEndLineNum = endLineNum - deletedLines.size + 1;
-				let newEndCharNum = selection.end.character;
-				if (deletedEnd)
-				{
-					const beforeEndLine = textEditor.document.lineAt(endLineNum - 1);
-					newEndCharNum = beforeEndLine.range.end.character;
-				}
-
-				const newStart = new vscode.Position(newStartLineNum, newStartCharNum);
-				const newEnd = new vscode.Position(newEndLineNum, newEndCharNum);
-				const anchor = selection.isReversed ? newEnd : newStart;
-				const active = selection.isReversed ? newStart : newEnd;
-
-				newSelections.push(new vscode.Selection(anchor, active));
-			}
+			console.assert(!toDelete.isEmpty);
+			edit.delete(toDelete);
 		}
-	})
-	.then(() =>
-	{
-		if (deletedLines.size > 0)
-		{
-			console.assert(newSelections.length > 0);
-			textEditor.selections = newSelections;
-		}
-	});
+	}
 }
