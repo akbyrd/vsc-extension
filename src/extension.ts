@@ -12,6 +12,8 @@ export function activate(context: vscode.ExtensionContext)
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.symbol.next",             t => cursorMoveTo_symbol(t, Direction.Next, false)),
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.symbol.prev",           t => cursorMoveTo_symbol(t, Direction.Prev, true)),
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.symbol.next",           t => cursorMoveTo_symbol(t, Direction.Next, true)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteChunk.prev",                     t => deleteChunk(t, Direction.Prev)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteChunk.next",                     t => deleteChunk(t, Direction.Next)),
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteLine.prev",                      deleteLine_prev),
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteLine.next",                      deleteLine_next),
 	);
@@ -197,6 +199,28 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Dir
 			// HACK: This is a workaround for https://github.com/microsoft/vscode/issues/106209
 			await sleep(4);
 			textEditor.setDecorations(symbolHighlightDecoration, symbolRanges);
+		}
+	}
+}
+
+async function deleteChunk(textEditor: vscode.TextEditor, direction: Direction)
+{
+	switch (direction)
+	{
+		case Direction.Prev:
+		{
+			await vscode.commands.executeCommand("cursorMove", { "to": "prevBlankLine", "by": "wrappedLine", "select": false });
+			await vscode.commands.executeCommand("cursorMove", { "to": "nextBlankLine", "by": "wrappedLine", "select": true });
+			await vscode.commands.executeCommand("deleteLeft");
+			break;
+		}
+
+		case Direction.Next:
+		{
+			await vscode.commands.executeCommand("cursorMove", { "to": "nextBlankLine", "by": "wrappedLine", "select": false });
+			await vscode.commands.executeCommand("cursorMove", { "to": "prevBlankLine", "by": "wrappedLine", "select": true });
+			await vscode.commands.executeCommand("deleteRight");
+			break;
 		}
 	}
 }

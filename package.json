@@ -55,6 +55,14 @@
         "title": "Select to Previous Symbol"
       },
       {
+        "command": "akbyrd.editor.deleteChunk.prev",
+        "title": "Delete Chunk Above Cursor"
+      },
+      {
+        "command": "akbyrd.editor.deleteChunk.next",
+        "title": "Delete Chunk Below Cursor"
+      },
+      {
         "command": "akbyrd.editor.deleteLine.prev",
         "title": "Delete Line Above Cursor"
       },
@@ -99,6 +107,14 @@
         },
         {
           "command": "akbyrd.editor.cursorSelectTo.symbol.next",
+          "when": "activeEditor"
+        },
+        {
+          "command": "akbyrd.editor.deleteChunk.prev",
+          "when": "activeEditor"
+        },
+        {
+          "command": "akbyrd.editor.deleteChunk.next",
           "when": "activeEditor"
         },
         {
