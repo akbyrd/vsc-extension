@@ -100,14 +100,48 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Dir
 			}
 		}
 
-		function findNearestSymbols(symbols: vscode.DocumentSymbol[])
+		function findNearestSymbols(symbols: vscode.DocumentSymbol[], depth: number)
 		{
 			for (const symbol of symbols)
 			{
 				const isCurrSymbol = symbol == currSymbol;
-				const isVariable = symbol.kind == vscode.SymbolKind.Variable;
+				const isTopLevel = depth == 0;
 
-				if (!(isCurrSymbol || isVariable))
+				let skipSymbol = false
+				switch (symbol.kind)
+				{
+					case vscode.SymbolKind.Property:
+					case vscode.SymbolKind.Field:
+					case vscode.SymbolKind.Constructor:
+					case vscode.SymbolKind.Variable:
+					case vscode.SymbolKind.String:
+					case vscode.SymbolKind.Number:
+					case vscode.SymbolKind.Boolean:
+					case vscode.SymbolKind.Array:
+					case vscode.SymbolKind.Object:
+					case vscode.SymbolKind.Key:
+					case vscode.SymbolKind.EnumMember:
+					case vscode.SymbolKind.Event:
+					case vscode.SymbolKind.TypeParameter:
+						skipSymbol = true;
+						break;
+				}
+
+				let recurseSymbol = false;
+				switch (symbol.kind)
+				{
+					case vscode.SymbolKind.File:
+					case vscode.SymbolKind.Module:
+					case vscode.SymbolKind.Namespace:
+					case vscode.SymbolKind.Package:
+					case vscode.SymbolKind.Class:
+					case vscode.SymbolKind.Interface:
+					case vscode.SymbolKind.Struct:
+						recurseSymbol = true;
+						break;
+				}
+
+				if (!isCurrSymbol && (isTopLevel || !skipSymbol))
 				{
 					const isAfterCursor = symbol.range.start.isAfterOrEqual(selection.active);
 					const isBeforeNextSymbol = !nextSymbol || symbol.range.start.isBefore(nextSymbol.range.start);
@@ -122,7 +156,8 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Dir
 						prevSymbol = symbol;
 				}
 
-				findNearestSymbols(symbol.children);
+				if (recurseSymbol)
+					findNearestSymbols(symbol.children, depth++);
 			}
 		}
 
@@ -131,7 +166,7 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Dir
 
 		let prevSymbol: vscode.DocumentSymbol | undefined;
 		let nextSymbol: vscode.DocumentSymbol | undefined;
-		findNearestSymbols(symbols);
+		findNearestSymbols(symbols, 0);
 
 		if (direction == Direction.Prev && prevSymbol)
 		{
