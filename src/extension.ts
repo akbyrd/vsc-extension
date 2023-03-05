@@ -2,131 +2,31 @@ import * as vscode from "vscode";
 
 export function activate(context: vscode.ExtensionContext)
 {
-	let disposable: vscode.Disposable;
+	context.subscriptions.push(
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.scrollTo.cursor",                      scrollTo_cursor),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.blankLine.prev.center",   t => cursorMoveTo_blankLine_center(t, Direction.Prev, false)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.blankLine.next.center",   t => cursorMoveTo_blankLine_center(t, Direction.Next, false)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.blankLine.prev.center", t => cursorMoveTo_blankLine_center(t, Direction.Prev, true)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.blankLine.next.center", t => cursorMoveTo_blankLine_center(t, Direction.Next, true)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.symbol.prev",             t => cursorMoveTo_symbol(t, Direction.Prev, false)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.symbol.next",             t => cursorMoveTo_symbol(t, Direction.Next, false)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.symbol.prev",           t => cursorMoveTo_symbol(t, Direction.Prev, true)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.symbol.next",           t => cursorMoveTo_symbol(t, Direction.Next, true)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteLine.prev",                      deleteLine_prev),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteLine.next",                      deleteLine_next),
+	);
 
-	disposable = vscode.commands.registerTextEditorCommand("akbyrd.editor.scrollTo.cursor",
-		(textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit) =>
-		{
-			centerCursor(textEditor);
-		});
-	context.subscriptions.push(disposable);
-
-	disposable = vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.blankLine.prev.center",
-		async (textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit) =>
-		{
-			await vscode.commands.executeCommand(
-				"cursorMove", { "to": "prevBlankLine", "by": "wrappedLine" });
-			centerCursor(textEditor);
-		});
-	context.subscriptions.push(disposable);
-
-	disposable = vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.blankLine.next.center",
-		async (textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit) =>
-		{
-			await vscode.commands.executeCommand(
-				"cursorMove", { "to": "nextBlankLine", "by": "wrappedLine" });
-			centerCursor(textEditor);
-		});
-	context.subscriptions.push(disposable);
-
-	disposable = vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.blankLine.prev.center",
-		async (textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit) =>
-		{
-			await vscode.commands.executeCommand(
-				"cursorMove", { "to": "prevBlankLine", "by": "wrappedLine", "select": true });
-			centerCursor(textEditor);
-		});
-	context.subscriptions.push(disposable);
-
-	disposable = vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.blankLine.next.center",
-		async (textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit) =>
-		{
-			await vscode.commands.executeCommand(
-				"cursorMove", { "to": "nextBlankLine", "by": "wrappedLine", "select": true });
-			centerCursor(textEditor);
-		});
-	context.subscriptions.push(disposable);
-
-	disposable = vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.symbol.prev",
-		async (textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit) =>
-		{
-			await cursorMoveToSymbol(textEditor, Direction.Previous, false);
-		});
-	context.subscriptions.push(disposable);
-
-	disposable = vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.symbol.next",
-		async (textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit) =>
-		{
-			await cursorMoveToSymbol(textEditor, Direction.Next, false);
-		});
-	context.subscriptions.push(disposable);
-
-	disposable = vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.symbol.prev",
-		async (textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit) =>
-		{
-			await cursorMoveToSymbol(textEditor, Direction.Previous, true);
-		});
-	context.subscriptions.push(disposable);
-
-	disposable = vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.symbol.next",
-		async (textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit) =>
-		{
-			await cursorMoveToSymbol(textEditor, Direction.Next, true);
-		});
-	context.subscriptions.push(disposable);
-
-	disposable = vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteLine.prev",
-		(textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit) =>
-		{
-			const deletedLines = new Set<number>;
-			for (const selection of textEditor.selections)
-			{
-				const selectedLine = selection.start.line;
-				const lineToDelete = Math.max(selectedLine - 1, 0)
-
-				if (!deletedLines.has(lineToDelete))
-				{
-					deletedLines.add(lineToDelete);
-					const textLine = textEditor.document.lineAt(lineToDelete);
-					if (!textLine.rangeIncludingLineBreak.isEmpty)
-						edit.delete(textLine.rangeIncludingLineBreak);
-				}
-			}
-		});
-	context.subscriptions.push(disposable);
-
-	disposable = vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteLine.next",
-		(textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit) =>
-		{
-			deleteLineNext(textEditor, edit);
-		});
-	context.subscriptions.push(disposable);
-
-	vscode.window.onDidChangeTextEditorSelection(
-		(e: vscode.TextEditorSelectionChangeEvent) =>
-		{
-			e.textEditor.setDecorations(symbolHighlightDecoration, []);
-		});
-
-	vscode.window.onDidChangeActiveTextEditor(
-		(textEditor: vscode.TextEditor | undefined) =>
-		{
-			symbols = undefined;
-		});
-	vscode.workspace.onDidChangeTextDocument(
-		(e: vscode.TextDocumentChangeEvent) =>
-		{
-			symbols = undefined;
-		});
+	vscode.window.onDidChangeTextEditorSelection(e => { e.textEditor.setDecorations(symbolHighlightDecoration, []); });
+	vscode.window.onDidChangeActiveTextEditor(() => { symbols = undefined; });
+	vscode.workspace.onDidChangeTextDocument(() => { symbols = undefined; });
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Globals
 
-// TODO: Keep symbols for all active editors, even if unfocused
 let symbols: vscode.DocumentSymbol[] | undefined;
 
-const symbolHighlightDecoration: vscode.TextEditorDecorationType = vscode.window.createTextEditorDecorationType({
+const symbolHighlightDecoration = vscode.window.createTextEditorDecorationType({
 	backgroundColor: new vscode.ThemeColor("editor.rangeHighlightBackground"),
 	isWholeLine: true,
 });
@@ -136,7 +36,7 @@ const symbolHighlightDecoration: vscode.TextEditorDecorationType = vscode.window
 
 enum Direction
 {
-	Previous,
+	Prev,
 	Next
 };
 
@@ -144,12 +44,12 @@ function sleep(ms: number) {
 	return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function logRangePosition(start : vscode.Position, end : vscode.Position)
+function logRangePosition(start: vscode.Position, end: vscode.Position)
 {
 	console.log("%d/%d -> %d/%d", start.line, start.character, end.line, end.character);
 }
 
-function logRange(range : vscode.Range)
+function logRange(range: vscode.Range)
 {
 	console.log("%d/%d -> %d/%d", range.start.line, range.start.character, range.end.line, range.end.character);
 }
@@ -157,14 +57,21 @@ function logRange(range : vscode.Range)
 // ---------------------------------------------------------------------------------------------------------------------
 // Commands
 
-function centerCursor(textEditor: vscode.TextEditor)
+function scrollTo_cursor(textEditor: vscode.TextEditor)
 {
 	const cursorPos = textEditor.selection.active;
 	const destRange = new vscode.Range(cursorPos, cursorPos);
 	textEditor.revealRange(destRange, vscode.TextEditorRevealType.InCenter);
 }
 
-async function cursorMoveToSymbol(textEditor: vscode.TextEditor, direction: Direction, select: boolean)
+async function cursorMoveTo_blankLine_center(textEditor: vscode.TextEditor, direction: Direction, select: boolean)
+{
+	const to = direction == Direction.Next ? "nextBlankLine" : "prevBlankLine";
+	await vscode.commands.executeCommand("cursorMove", { "to": to, "by": "wrappedLine", "select": select });
+	scrollTo_cursor(textEditor);
+}
+
+async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Direction, select: boolean)
 {
 	if (!symbols)
 	{
@@ -226,7 +133,7 @@ async function cursorMoveToSymbol(textEditor: vscode.TextEditor, direction: Dire
 		let nextSymbol: vscode.DocumentSymbol | undefined;
 		findNearestSymbols(symbols);
 
-		if (direction == Direction.Previous && prevSymbol)
+		if (direction == Direction.Prev && prevSymbol)
 		{
 			symbolRanges.push(prevSymbol.range);
 			const symbolSelection = select
@@ -259,7 +166,29 @@ async function cursorMoveToSymbol(textEditor: vscode.TextEditor, direction: Dire
 	}
 }
 
-function deleteLineNext(textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit)
+function deleteLine_prev(textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit)
+{
+	const deletedLines = new Set<number>;
+	for (const selection of textEditor.selections)
+	{
+		if (selection.start.line == 0)
+			continue;
+
+		const selectedLine = selection.start.line;
+		const lineToDelete = Math.max(selectedLine - 1, 0)
+
+		if (!deletedLines.has(lineToDelete))
+		{
+			deletedLines.add(lineToDelete);
+
+			const prevLine = textEditor.document.lineAt(lineToDelete);
+			const toDelete = prevLine.rangeIncludingLineBreak
+			edit.delete(toDelete);
+		}
+	}
+}
+
+function deleteLine_next(textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit)
 {
 	const deletedLines = new Set<number>;
 	for (const selection of textEditor.selections)
@@ -267,17 +196,18 @@ function deleteLineNext(textEditor: vscode.TextEditor, edit: vscode.TextEditorEd
 		if (selection.end.line == textEditor.document.lineCount - 1)
 			continue;
 
-		if (!deletedLines.has(selection.end.line + 1))
+		const selectedLine = selection.end.line;
+		const lineToDelete = Math.max(selectedLine + 1, 0)
+
+		if (!deletedLines.has(lineToDelete))
 		{
-			deletedLines.add(selection.end.line + 1);
+			deletedLines.add(lineToDelete);
 
-			const endLine = textEditor.document.lineAt(selection.end.line);
-			const nextLine = textEditor.document.lineAt(selection.end.line + 1);
+			const currLine = textEditor.document.lineAt(selectedLine);
+			const nextLine = textEditor.document.lineAt(lineToDelete);
 
-			const newline = new vscode.Range(endLine.range.end, endLine.rangeIncludingLineBreak.end);
+			const newline = new vscode.Range(currLine.range.end, currLine.rangeIncludingLineBreak.end);
 			const toDelete = newline.union(nextLine.range);
-
-			console.assert(!toDelete.isEmpty);
 			edit.delete(toDelete);
 		}
 	}
