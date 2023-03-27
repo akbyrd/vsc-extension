@@ -3,6 +3,9 @@ import * as vscode from "vscode";
 export function activate(context: vscode.ExtensionContext)
 {
 	context.subscriptions.push(
+		vscode.commands.registerCommand("akbyrd.task.runWithArgs", task_runWithArgs),
+		vscode.commands.registerCommand("akbyrd.task.getArgs",     task_getArgs),
+
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.scrollTo.cursor",                      scrollTo_cursor),
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.blankLine.prev.center",   t => cursorMoveTo_blankLine_center(t, Direction.Prev, false)),
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.blankLine.next.center",   t => cursorMoveTo_blankLine_center(t, Direction.Next, false)),
@@ -27,6 +30,7 @@ export function activate(context: vscode.ExtensionContext)
 // Globals
 
 let symbols: vscode.DocumentSymbol[] | undefined;
+let taskArgs: object | undefined;
 
 const symbolHighlightDecoration = vscode.window.createTextEditorDecorationType({
 	backgroundColor: new vscode.ThemeColor("editor.rangeHighlightBackground"),
@@ -57,7 +61,50 @@ function logRange(range: vscode.Range)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// Commands
+// Plain Commands
+
+type RunTaskArgs =
+{
+	task: string;
+	type: string;
+};
+
+type TaskWithArgs =
+{
+	task: RunTaskArgs | string;
+	taskArgs: object;
+};
+
+async function task_runWithArgs(taskWithArgs: TaskWithArgs | string)
+{
+	if (!taskWithArgs) throw "Arguments missing";
+	if (typeof taskWithArgs == "string") taskWithArgs = { task: taskWithArgs, taskArgs: {} };
+	if (!taskWithArgs.task) throw "Task not specified";
+	if (!taskWithArgs.taskArgs) throw "Task arguments not specified";
+	if (typeof taskWithArgs.taskArgs != "object") throw "Task arguments must be an object";
+
+	taskArgs = taskWithArgs.taskArgs;
+	await vscode.commands.executeCommand("workbench.action.tasks.runTask", taskWithArgs.task);
+	//taskArgs = undefined;
+}
+
+// TODO: Can we wait for runTask or use a task callback to clear the global?
+// TODO: Contribute task definitions?
+// TODO: Set a default for target or handle it being empty
+// TODO: Can we make headers compilable?
+// TODO: Unreal build tasks
+
+function task_getArgs(argName: string)
+{
+	if (!taskArgs) throw "akbyrd.task.getArgs can only be used with akbyrd.task.runTaskWithArgs";
+
+	let arg: any | undefined = taskArgs[argName as keyof object];
+	if (arg == undefined) throw `Task arguments do not contain "${argName}"`;
+	return typeof arg == "string" ? arg : arg.toString();
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Text Editor Commands
 
 function scrollTo_cursor(textEditor: vscode.TextEditor)
 {
@@ -209,16 +256,14 @@ async function deleteChunk(textEditor: vscode.TextEditor, direction: Direction)
 	{
 		case Direction.Prev:
 		{
-			await vscode.commands.executeCommand("cursorMove", { "to": "prevBlankLine", "by": "wrappedLine", "select": false });
-			await vscode.commands.executeCommand("cursorMove", { "to": "nextBlankLine", "by": "wrappedLine", "select": true });
+			await vscode.commands.executeCommand("cursorMove", { "to": "prevBlankLine", "by": "wrappedLine", "select": true });
 			await vscode.commands.executeCommand("deleteLeft");
 			break;
 		}
 
 		case Direction.Next:
 		{
-			await vscode.commands.executeCommand("cursorMove", { "to": "nextBlankLine", "by": "wrappedLine", "select": false });
-			await vscode.commands.executeCommand("cursorMove", { "to": "prevBlankLine", "by": "wrappedLine", "select": true });
+			await vscode.commands.executeCommand("cursorMove", { "to": "nextBlankLine", "by": "wrappedLine", "select": true });
 			await vscode.commands.executeCommand("deleteRight");
 			break;
 		}

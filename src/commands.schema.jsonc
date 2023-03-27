@@ -1,0 +1,58 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema",
+	"type": "array",
+	"items": {
+		"type": "object",
+		"if": {
+			"required": [ "command" ],
+			"properties": { "command": { "const": "akbyrd.task.runWithArgs" } }
+		},
+		"then": {
+			"required": [ "args" ],
+			"properties": {
+				"args": {
+					"type": [ "string", "object" ]
+				}
+			},
+			"if": {
+				"properties": { "args": { "type": "object" } }
+			},
+			"then": {
+				"properties": {
+					"args": {
+						"required": [ "task" ],
+						"properties": {
+							"task": {
+								"description": "The standard arguments to workbench.action.tasks.runTask",
+								"type": [ "string", "object" ]
+							},
+							"taskArgs": {
+								"description": "An object filled task arguments. Keys are argument names and values are argument values.",
+								"type": "object",
+								"patternProperties": {
+									".*": { "not": { "type": [ "object", "array" ] } }
+								}
+							}
+						},
+						"defaultSnippets": [
+							{ "bodyText": "{ \"task\": \"${1:taskName}\", \"taskArgs\": { \"${4:argName}\": \"${5:argValue}\" } }" }
+						],
+						"if": {
+							"properties": { "task": { "type": "object"} }
+						},
+						"then": {
+							"properties": {
+								"task": {
+									"properties": {
+										"task": { "type": "string" },
+										"type": { "type": "string" }
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
