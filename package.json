@@ -20,11 +20,11 @@
     "jsonValidation": [
       {
         "fileMatch": "%APP_SETTINGS_HOME%/keybindings.json",
-        "url": "./src/commands.schema.jsonc"
+        "url": "./res/commands.schema.jsonc"
       },
       {
         "fileMatch": "%APP_SETTINGS_HOME%/profiles/*/keybindings.json",
-        "url": "./src/commands.schema.jsonc"
+        "url": "./res/commands.schema.jsonc"
       }
     ],
     "commands": [
