@@ -124,6 +124,7 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Dir
 {
 	if (!symbols)
 	{
+		// Use the DocumentSymbol variation so we can efficiently skip entire sections of the tree
 		symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
 			"vscode.executeDocumentSymbolProvider", textEditor.document.uri);
 	}
@@ -156,7 +157,7 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Dir
 				const isCurrSymbol = symbol == currSymbol;
 				const isTopLevel = depth == 0;
 
-				let skipSymbol = false
+				let skipUnlessTopLevel = false;
 				switch (symbol.kind)
 				{
 					case vscode.SymbolKind.Property:
@@ -172,9 +173,19 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Dir
 					case vscode.SymbolKind.EnumMember:
 					case vscode.SymbolKind.Event:
 					case vscode.SymbolKind.TypeParameter:
-						skipSymbol = true;
+						skipUnlessTopLevel = true;
 						break;
 				}
+
+				let alwaysSkip = false;
+				switch (symbol.kind)
+				{
+					case vscode.SymbolKind.Class:
+					case vscode.SymbolKind.Struct:
+						alwaysSkip ||= symbol.detail.includes("declaration");
+						break;
+				}
+				alwaysSkip ||= symbol.detail.includes("typedef");
 
 				let recurseSymbol = false;
 				switch (symbol.kind)
@@ -190,23 +201,27 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Dir
 						break;
 				}
 
-				if (!isCurrSymbol && (isTopLevel || !skipSymbol))
+				if (!isCurrSymbol && (isTopLevel || !skipUnlessTopLevel) && !alwaysSkip)
 				{
-					const isAfterCursor = symbol.range.start.isAfterOrEqual(selection.active);
-					const isBeforeNextSymbol = !nextSymbol || symbol.range.start.isBefore(nextSymbol.range.start);
+					const isSameRangeAsCurr = currSymbol && symbol.range.isEqual(currSymbol.range);
+					if (!isSameRangeAsCurr)
+					{
+						const isBeforeCursor = symbol.range.start.isBeforeOrEqual(selection.active);
+						const isAfterPrevSymbol = !prevSymbol || symbol.range.start.isAfter(prevSymbol.range.start);
 
-					const isBeforeCursor = symbol.range.start.isBeforeOrEqual(selection.active);
-					const isAfterPrevSymbol = !prevSymbol || symbol.range.start.isAfter(prevSymbol.range.start);
+						const isAfterCursor = symbol.range.start.isAfterOrEqual(selection.active);
+						const isBeforeNextSymbol = !nextSymbol || symbol.range.start.isBefore(nextSymbol.range.start);
 
-					if (isAfterCursor && isBeforeNextSymbol)
-						nextSymbol = symbol;
+						if (isBeforeCursor && isAfterPrevSymbol)
+							prevSymbol = symbol;
 
-					if (isBeforeCursor && isAfterPrevSymbol)
-						prevSymbol = symbol;
+						if (isAfterCursor && isBeforeNextSymbol)
+							nextSymbol = symbol;
+					}
 				}
 
 				if (recurseSymbol)
-					findNearestSymbols(symbol.children, depth++);
+					findNearestSymbols(symbol.children, depth + 1);
 			}
 		}
 
