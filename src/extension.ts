@@ -1,4 +1,4 @@
-import * as vscode from "vscode";
+import * as vscode from "vscode"
 
 export function activate(context: vscode.ExtensionContext)
 {
@@ -19,23 +19,23 @@ export function activate(context: vscode.ExtensionContext)
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteChunk.next",                     t => deleteChunk(t, Direction.Next)),
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteLine.prev",                      deleteLine_prev),
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteLine.next",                      deleteLine_next),
-	);
+	)
 
-	vscode.window.onDidChangeTextEditorSelection(e => { e.textEditor.setDecorations(symbolHighlightDecoration, []); });
-	vscode.window.onDidChangeActiveTextEditor(() => { symbols = undefined; });
-	vscode.workspace.onDidChangeTextDocument(() => { symbols = undefined; });
+	vscode.window.onDidChangeTextEditorSelection(e => { e.textEditor.setDecorations(symbolHighlightDecoration, []) })
+	vscode.window.onDidChangeActiveTextEditor(() => { symbols = undefined })
+	vscode.workspace.onDidChangeTextDocument(() => { symbols = undefined })
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Globals
 
-let symbols: vscode.DocumentSymbol[] | undefined;
-let taskArgs: object | undefined;
+let symbols: vscode.DocumentSymbol[] | undefined
+let taskArgs: object | undefined
 
 const symbolHighlightDecoration = vscode.window.createTextEditorDecorationType({
 	backgroundColor: new vscode.ThemeColor("editor.rangeHighlightBackground"),
 	isWholeLine: true,
-});
+})
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Utilities
@@ -44,20 +44,20 @@ enum Direction
 {
 	Prev,
 	Next
-};
+}
 
 function sleep(ms: number) {
-	return new Promise(resolve => setTimeout(resolve, ms));
+	return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 function logRangePosition(start: vscode.Position, end: vscode.Position)
 {
-	console.log("%d/%d -> %d/%d", start.line, start.character, end.line, end.character);
+	console.log("%d/%d -> %d/%d", start.line, start.character, end.line, end.character)
 }
 
 function logRange(range: vscode.Range)
 {
-	console.log("%d/%d -> %d/%d", range.start.line, range.start.character, range.end.line, range.end.character);
+	console.log("%d/%d -> %d/%d", range.start.line, range.start.character, range.end.line, range.end.character)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -65,27 +65,27 @@ function logRange(range: vscode.Range)
 
 type RunTaskArgs =
 {
-	task: string;
-	type: string;
-};
+	task: string
+	type: string
+}
 
 type TaskWithArgs =
 {
-	task: RunTaskArgs | string;
-	taskArgs: object;
-};
+	task: RunTaskArgs | string
+	taskArgs: object
+}
 
 async function task_runWithArgs(taskWithArgs: TaskWithArgs | string)
 {
-	if (!taskWithArgs) throw "Arguments missing";
-	if (typeof taskWithArgs == "string") taskWithArgs = { task: taskWithArgs, taskArgs: {} };
-	if (!taskWithArgs.task) throw "Task not specified";
-	if (!taskWithArgs.taskArgs) throw "Task arguments not specified";
-	if (typeof taskWithArgs.taskArgs != "object") throw "Task arguments must be an object";
+	if (!taskWithArgs) throw "Arguments missing"
+	if (typeof taskWithArgs == "string") taskWithArgs = { task: taskWithArgs, taskArgs: {} }
+	if (!taskWithArgs.task) throw "Task not specified"
+	if (!taskWithArgs.taskArgs) throw "Task arguments not specified"
+	if (typeof taskWithArgs.taskArgs != "object") throw "Task arguments must be an object"
 
-	taskArgs = taskWithArgs.taskArgs;
-	await vscode.commands.executeCommand("workbench.action.tasks.runTask", taskWithArgs.task);
-	//taskArgs = undefined;
+	taskArgs = taskWithArgs.taskArgs
+	await vscode.commands.executeCommand("workbench.action.tasks.runTask", taskWithArgs.task)
+	//taskArgs = undefined
 }
 
 // TODO: Can we wait for runTask or use a task callback to clear the global?
@@ -96,11 +96,11 @@ async function task_runWithArgs(taskWithArgs: TaskWithArgs | string)
 
 function task_getArgs(argName: string)
 {
-	if (!taskArgs) throw "akbyrd.task.getArgs can only be used with akbyrd.task.runTaskWithArgs";
+	if (!taskArgs) throw "akbyrd.task.getArgs can only be used with akbyrd.task.runTaskWithArgs"
 
-	let arg: any | undefined = taskArgs[argName as keyof object];
-	if (arg == undefined) throw `Task arguments do not contain "${argName}"`;
-	return typeof arg == "string" ? arg : arg.toString();
+	let arg: any | undefined = taskArgs[argName as keyof object]
+	if (arg == undefined) throw `Task arguments do not contain "${argName}"`
+	return typeof arg == "string" ? arg : arg.toString()
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -108,16 +108,16 @@ function task_getArgs(argName: string)
 
 function scrollTo_cursor(textEditor: vscode.TextEditor)
 {
-	const cursorPos = textEditor.selection.active;
-	const destRange = new vscode.Range(cursorPos, cursorPos);
-	textEditor.revealRange(destRange, vscode.TextEditorRevealType.InCenter);
+	const cursorPos = textEditor.selection.active
+	const destRange = new vscode.Range(cursorPos, cursorPos)
+	textEditor.revealRange(destRange, vscode.TextEditorRevealType.InCenter)
 }
 
 async function cursorMoveTo_blankLine_center(textEditor: vscode.TextEditor, direction: Direction, select: boolean)
 {
-	const to = direction == Direction.Next ? "nextBlankLine" : "prevBlankLine";
-	await vscode.commands.executeCommand("cursorMove", { "to": to, "by": "wrappedLine", "select": select });
-	scrollTo_cursor(textEditor);
+	const to = direction == Direction.Next ? "nextBlankLine" : "prevBlankLine"
+	await vscode.commands.executeCommand("cursorMove", { "to": to, "by": "wrappedLine", "select": select })
+	scrollTo_cursor(textEditor)
 }
 
 async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Direction, select: boolean)
@@ -126,27 +126,27 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Dir
 	{
 		// Use the DocumentSymbol variation so we can efficiently skip entire sections of the tree
 		symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
-			"vscode.executeDocumentSymbolProvider", textEditor.document.uri);
+			"vscode.executeDocumentSymbolProvider", textEditor.document.uri)
 	}
 
 	if (!symbols || !symbols.length)
-		return;
+		return
 
-	const symbolRanges: vscode.Range[] = [];
-	const symbolSelections: vscode.Selection[] = [];
+	const symbolRanges: vscode.Range[] = []
+	const symbolSelections: vscode.Selection[] = []
 	for (const selection of textEditor.selections)
 	{
 		function findCurrentSymbol(symbols: vscode.DocumentSymbol[])
 		{
 			for (const symbol of symbols)
 			{
-				const containsCursor = symbol.range.contains(selection.active);
-				const isAfterCurr = !currSymbol || symbol.range.start.isAfter(currSymbol.range.start);
+				const containsCursor = symbol.range.contains(selection.active)
+				const isAfterCurr = !currSymbol || symbol.range.start.isAfter(currSymbol.range.start)
 
 				if (containsCursor && isAfterCurr)
-					currSymbol = symbol;
+					currSymbol = symbol
 
-				findCurrentSymbol(symbol.children);
+				findCurrentSymbol(symbol.children)
 			}
 		}
 
@@ -154,10 +154,10 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Dir
 		{
 			for (const symbol of symbols)
 			{
-				const isCurrSymbol = symbol == currSymbol;
-				const isTopLevel = depth == 0;
+				const isCurrSymbol = symbol == currSymbol
+				const isTopLevel = depth == 0
 
-				let skipUnlessTopLevel = false;
+				let skipUnlessTopLevel = false
 				switch (symbol.kind)
 				{
 					case vscode.SymbolKind.Property:
@@ -173,21 +173,21 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Dir
 					case vscode.SymbolKind.EnumMember:
 					case vscode.SymbolKind.Event:
 					case vscode.SymbolKind.TypeParameter:
-						skipUnlessTopLevel = true;
-						break;
+						skipUnlessTopLevel = true
+						break
 				}
 
-				let alwaysSkip = false;
+				let alwaysSkip = false
 				switch (symbol.kind)
 				{
 					case vscode.SymbolKind.Class:
 					case vscode.SymbolKind.Struct:
-						alwaysSkip ||= symbol.detail.includes("declaration");
-						break;
+						alwaysSkip ||= symbol.detail.includes("declaration")
+						break
 				}
-				alwaysSkip ||= symbol.detail.includes("typedef");
+				alwaysSkip ||= symbol.detail.includes("typedef")
 
-				let recurseSymbol = false;
+				let recurseSymbol = false
 				switch (symbol.kind)
 				{
 					case vscode.SymbolKind.File:
@@ -197,70 +197,70 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Dir
 					case vscode.SymbolKind.Class:
 					case vscode.SymbolKind.Interface:
 					case vscode.SymbolKind.Struct:
-						recurseSymbol = true;
-						break;
+						recurseSymbol = true
+						break
 				}
 
 				if (!isCurrSymbol && (isTopLevel || !skipUnlessTopLevel) && !alwaysSkip)
 				{
-					const isSameRangeAsCurr = currSymbol && symbol.range.isEqual(currSymbol.range);
+					const isSameRangeAsCurr = currSymbol && symbol.range.isEqual(currSymbol.range)
 					if (!isSameRangeAsCurr)
 					{
-						const isBeforeCursor = symbol.range.start.isBeforeOrEqual(selection.active);
-						const isAfterPrevSymbol = !prevSymbol || symbol.range.start.isAfter(prevSymbol.range.start);
+						const isBeforeCursor = symbol.range.start.isBeforeOrEqual(selection.active)
+						const isAfterPrevSymbol = !prevSymbol || symbol.range.start.isAfter(prevSymbol.range.start)
 
-						const isAfterCursor = symbol.range.start.isAfterOrEqual(selection.active);
-						const isBeforeNextSymbol = !nextSymbol || symbol.range.start.isBefore(nextSymbol.range.start);
+						const isAfterCursor = symbol.range.start.isAfterOrEqual(selection.active)
+						const isBeforeNextSymbol = !nextSymbol || symbol.range.start.isBefore(nextSymbol.range.start)
 
 						if (isBeforeCursor && isAfterPrevSymbol)
-							prevSymbol = symbol;
+							prevSymbol = symbol
 
 						if (isAfterCursor && isBeforeNextSymbol)
-							nextSymbol = symbol;
+							nextSymbol = symbol
 					}
 				}
 
 				if (recurseSymbol)
-					findNearestSymbols(symbol.children, depth + 1);
+					findNearestSymbols(symbol.children, depth + 1)
 			}
 		}
 
-		let currSymbol: vscode.DocumentSymbol | undefined;
-		findCurrentSymbol(symbols);
+		let currSymbol: vscode.DocumentSymbol | undefined
+		findCurrentSymbol(symbols)
 
-		let prevSymbol: vscode.DocumentSymbol | undefined;
-		let nextSymbol: vscode.DocumentSymbol | undefined;
-		findNearestSymbols(symbols, 0);
+		let prevSymbol: vscode.DocumentSymbol | undefined
+		let nextSymbol: vscode.DocumentSymbol | undefined
+		findNearestSymbols(symbols, 0)
 
 		if (direction == Direction.Prev && prevSymbol)
 		{
-			symbolRanges.push(prevSymbol.range);
+			symbolRanges.push(prevSymbol.range)
 			const symbolSelection = select
 				? new vscode.Selection(selection.anchor, prevSymbol.range.start)
-				: new vscode.Selection(prevSymbol.range.start, prevSymbol.range.start);
-			symbolSelections.push(symbolSelection);
+				: new vscode.Selection(prevSymbol.range.start, prevSymbol.range.start)
+			symbolSelections.push(symbolSelection)
 		}
 
 		if (direction == Direction.Next && nextSymbol)
 		{
-			symbolRanges.push(nextSymbol.range);
+			symbolRanges.push(nextSymbol.range)
 			const symbolSelection = select
 				? new vscode.Selection(selection.anchor, nextSymbol.range.start)
-				: new vscode.Selection(nextSymbol.range.start, nextSymbol.range.start);
-			symbolSelections.push(symbolSelection);
+				: new vscode.Selection(nextSymbol.range.start, nextSymbol.range.start)
+			symbolSelections.push(symbolSelection)
 		}
 	}
 
 	if (symbolRanges.length)
 	{
-		textEditor.selections = symbolSelections;
-		textEditor.revealRange(symbolRanges[0]);
+		textEditor.selections = symbolSelections
+		textEditor.revealRange(symbolRanges[0])
 
 		if (!select)
 		{
 			// HACK: This is a workaround for https://github.com/microsoft/vscode/issues/106209
-			await sleep(4);
-			textEditor.setDecorations(symbolHighlightDecoration, symbolRanges);
+			await sleep(4)
+			textEditor.setDecorations(symbolHighlightDecoration, symbolRanges)
 		}
 	}
 }
@@ -271,63 +271,63 @@ async function deleteChunk(textEditor: vscode.TextEditor, direction: Direction)
 	{
 		case Direction.Prev:
 		{
-			await vscode.commands.executeCommand("cursorMove", { "to": "prevBlankLine", "by": "wrappedLine", "select": true });
-			await vscode.commands.executeCommand("deleteLeft");
-			break;
+			await vscode.commands.executeCommand("cursorMove", { "to": "prevBlankLine", "by": "wrappedLine", "select": true })
+			await vscode.commands.executeCommand("deleteLeft")
+			break
 		}
 
 		case Direction.Next:
 		{
-			await vscode.commands.executeCommand("cursorMove", { "to": "nextBlankLine", "by": "wrappedLine", "select": true });
-			await vscode.commands.executeCommand("deleteRight");
-			break;
+			await vscode.commands.executeCommand("cursorMove", { "to": "nextBlankLine", "by": "wrappedLine", "select": true })
+			await vscode.commands.executeCommand("deleteRight")
+			break
 		}
 	}
 }
 
 function deleteLine_prev(textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit)
 {
-	const deletedLines = new Set<number>;
+	const deletedLines = new Set<number>
 	for (const selection of textEditor.selections)
 	{
 		if (selection.start.line == 0)
-			continue;
+			continue
 
-		const selectedLine = selection.start.line;
+		const selectedLine = selection.start.line
 		const lineToDelete = Math.max(selectedLine - 1, 0)
 
 		if (!deletedLines.has(lineToDelete))
 		{
-			deletedLines.add(lineToDelete);
+			deletedLines.add(lineToDelete)
 
-			const prevLine = textEditor.document.lineAt(lineToDelete);
+			const prevLine = textEditor.document.lineAt(lineToDelete)
 			const toDelete = prevLine.rangeIncludingLineBreak
-			edit.delete(toDelete);
+			edit.delete(toDelete)
 		}
 	}
 }
 
 function deleteLine_next(textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit)
 {
-	const deletedLines = new Set<number>;
+	const deletedLines = new Set<number>
 	for (const selection of textEditor.selections)
 	{
 		if (selection.end.line == textEditor.document.lineCount - 1)
-			continue;
+			continue
 
-		const selectedLine = selection.end.line;
+		const selectedLine = selection.end.line
 		const lineToDelete = Math.max(selectedLine + 1, 0)
 
 		if (!deletedLines.has(lineToDelete))
 		{
-			deletedLines.add(lineToDelete);
+			deletedLines.add(lineToDelete)
 
-			const currLine = textEditor.document.lineAt(selectedLine);
-			const nextLine = textEditor.document.lineAt(lineToDelete);
+			const currLine = textEditor.document.lineAt(selectedLine)
+			const nextLine = textEditor.document.lineAt(lineToDelete)
 
-			const newline = new vscode.Range(currLine.range.end, currLine.rangeIncludingLineBreak.end);
-			const toDelete = newline.union(nextLine.range);
-			edit.delete(toDelete);
+			const newline = new vscode.Range(currLine.range.end, currLine.rangeIncludingLineBreak.end)
+			const toDelete = newline.union(nextLine.range)
+			edit.delete(toDelete)
 		}
 	}
 }
