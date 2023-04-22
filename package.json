@@ -65,12 +65,28 @@
         "title": "Move to Previous Symbol"
       },
       {
+        "command": "akbyrd.editor.cursorMoveTo.symbol.prnt",
+        "title": "Move to Parent Symbol"
+      },
+      {
+        "command": "akbyrd.editor.cursorMoveTo.symbol.chld",
+        "title": "Move to Child Symbol"
+      },
+      {
         "command": "akbyrd.editor.cursorSelectTo.symbol.prev",
         "title": "Select to Previous Symbol"
       },
       {
         "command": "akbyrd.editor.cursorSelectTo.symbol.next",
         "title": "Select to Previous Symbol"
+      },
+      {
+        "command": "akbyrd.editor.cursorSelectTo.symbol.prnt",
+        "title": "Select to Parent Symbol"
+      },
+      {
+        "command": "akbyrd.editor.cursorSelectTo.symbol.chld",
+        "title": "Select to Child Symbol"
       },
       {
         "command": "akbyrd.editor.deleteChunk.prev",

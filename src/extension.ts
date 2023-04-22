@@ -11,10 +11,14 @@ export function activate(context: vscode.ExtensionContext)
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.blankLine.next.center",   t => cursorMoveTo_blankLine_center(t, Direction.Next, false)),
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.blankLine.prev.center", t => cursorMoveTo_blankLine_center(t, Direction.Prev, true)),
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.blankLine.next.center", t => cursorMoveTo_blankLine_center(t, Direction.Next, true)),
-		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.symbol.prev",             t => cursorMoveTo_symbol(t, Direction.Prev, false)),
-		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.symbol.next",             t => cursorMoveTo_symbol(t, Direction.Next, false)),
-		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.symbol.prev",           t => cursorMoveTo_symbol(t, Direction.Prev, true)),
-		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.symbol.next",           t => cursorMoveTo_symbol(t, Direction.Next, true)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.symbol.prev",             t => cursorMoveTo_symbol(t, HierarchyDirection.Prev, false)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.symbol.next",             t => cursorMoveTo_symbol(t, HierarchyDirection.Next, false)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.symbol.prnt",             t => cursorMoveTo_symbol(t, HierarchyDirection.Parent, false)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.symbol.chld",             t => cursorMoveTo_symbol(t, HierarchyDirection.Child, false)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.symbol.prev",           t => cursorMoveTo_symbol(t, HierarchyDirection.Prev, true)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.symbol.next",           t => cursorMoveTo_symbol(t, HierarchyDirection.Next, true)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.symbol.prnt",           t => cursorMoveTo_symbol(t, HierarchyDirection.Parent, true)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.symbol.chld",           t => cursorMoveTo_symbol(t, HierarchyDirection.Child, true)),
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteChunk.prev",                     t => deleteChunk(t, Direction.Prev)),
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteChunk.next",                     t => deleteChunk(t, Direction.Next)),
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteLine.prev",                      deleteLine_prev),
@@ -43,7 +47,15 @@ const symbolHighlightDecoration = vscode.window.createTextEditorDecorationType({
 enum Direction
 {
 	Prev,
-	Next
+	Next,
+}
+
+enum HierarchyDirection
+{
+	Prev,
+	Next,
+	Parent,
+	Child,
 }
 
 function sleep(ms: number) {
@@ -120,7 +132,177 @@ async function cursorMoveTo_blankLine_center(textEditor: vscode.TextEditor, dire
 	scrollTo_cursor(textEditor)
 }
 
-async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Direction, select: boolean)
+type NearestSymbols =
+{
+	current?:  vscode.DocumentSymbol
+	parent?:   vscode.DocumentSymbol
+	child?:    vscode.DocumentSymbol
+	previous?: vscode.DocumentSymbol
+	next?:     vscode.DocumentSymbol
+}
+
+function findNearestSymbols(symbols: vscode.DocumentSymbol[], position: vscode.Position, nearest: NearestSymbols)
+{
+	// NOTE: This functions makes several assumptions:
+	// * Symbols are sorted by start position
+	// * Symbols do not overlap
+	// * Symbols fully enclose their children
+
+	// NOTE: C++ - Friend functions inside classes are hoisted out of the class.
+
+	const x = 0;
+	for (let i = 0; i < symbols.length; i++)
+	{
+		const symbol = symbols[i];
+
+		const containsCursor = symbol.range.start.isBefore(position) && symbol.range.start.isAfter(position)
+		if (containsCursor)
+		{
+			nearest.parent   = nearest.current;
+			nearest.current  = symbol
+			nearest.previous = undefined
+			nearest.next     = undefined
+
+			findNearestSymbols(symbol.children, position, nearest)
+			return
+		}
+		else
+		{
+			if (i > 0)
+			{
+				const prevSymbol = symbols[i - 1]
+
+				const isBeforeCursor = prevSymbol.range.start.isBefore(position)
+				const isAfterPrevSymbol = !nearest.previous || prevSymbol.range.start.isAfter(nearest.previous.range.start)
+
+				if (isBeforeCursor && isAfterPrevSymbol)
+					nearest.previous = prevSymbol
+			}
+
+			const isAfterCursor = symbol.range.start.isAfter(position)
+			const isBeforeNextSymbol = symbol && (!nearest.next || symbol.range.start.isBefore(nearest.next.range.start))
+
+			if (isAfterCursor && isBeforeNextSymbol)
+			{
+				nearest.next = symbol
+				return
+			}
+		}
+	}
+}
+
+function findCurrentAndParentSymbol(symbols: vscode.DocumentSymbol[], position: vscode.Position, nearest: NearestSymbols)
+{
+	for (const symbol of symbols)
+	{
+		const containsCursor = symbol.range.contains(position)
+		const isAfterCurr = !nearest.current || symbol.range.start.isAfter(nearest.current.range.start)
+
+		if (containsCursor && isAfterCurr)
+		{
+			nearest.parent = nearest.current;
+			nearest.current = symbol
+		}
+
+		// TODO: It's probably reasonable to assume parent symbols fully contain their children. If we do then we can skip
+		// more of the symbol tree by making sure the parent contains the cursor before recursing into its children.
+		findCurrentAndParentSymbol(symbol.children, position, nearest)
+	}
+}
+
+function findChildSymbol(symbols: vscode.DocumentSymbol[], position: vscode.Position, nearest: NearestSymbols)
+{
+	if (!nearest.current)
+		return;
+
+	for (const symbol of nearest.current.children)
+	{
+		const isBeforeChildSymbol = !nearest.child || symbol.range.start.isBefore(nearest.child.range.start)
+
+		if (isBeforeChildSymbol)
+			nearest.child = symbol
+	}
+}
+
+function findNextAndPreviousSymbols(symbols: vscode.DocumentSymbol[], position: vscode.Position, nearest: NearestSymbols, depth: number)
+{
+	for (const symbol of symbols)
+	{
+		const isCurrSymbol = symbol == nearest.current
+		const isTopLevel = depth == 0
+
+		let skipUnlessTopLevel = false
+		/*
+		switch (symbol.kind)
+		{
+			case vscode.SymbolKind.Property:
+			case vscode.SymbolKind.Field:
+			case vscode.SymbolKind.Constructor:
+			case vscode.SymbolKind.Variable:
+			case vscode.SymbolKind.String:
+			case vscode.SymbolKind.Number:
+			case vscode.SymbolKind.Boolean:
+			case vscode.SymbolKind.Array:
+			case vscode.SymbolKind.Object:
+			case vscode.SymbolKind.Key:
+			case vscode.SymbolKind.EnumMember:
+			case vscode.SymbolKind.Event:
+			case vscode.SymbolKind.TypeParameter:
+				skipUnlessTopLevel = true
+				break
+		}
+		*/
+
+		let alwaysSkip = false
+		switch (symbol.kind)
+		{
+			case vscode.SymbolKind.Class:
+			case vscode.SymbolKind.Enum:
+			case vscode.SymbolKind.Struct:
+				alwaysSkip ||= symbol.detail.includes("declaration")
+				break
+		}
+		alwaysSkip ||= symbol.detail.includes("typedef")
+
+		let recurseSymbol = false
+		switch (symbol.kind)
+		{
+			case vscode.SymbolKind.File:
+			case vscode.SymbolKind.Module:
+			case vscode.SymbolKind.Namespace:
+			case vscode.SymbolKind.Package:
+			case vscode.SymbolKind.Class:
+			case vscode.SymbolKind.Interface:
+			case vscode.SymbolKind.Struct:
+				recurseSymbol = true
+				break
+		}
+
+		if (!isCurrSymbol && (isTopLevel || !skipUnlessTopLevel) && !alwaysSkip)
+		{
+			const isSameRangeAsCurr = nearest.current && symbol.range.isEqual(nearest.current.range)
+			if (!isSameRangeAsCurr)
+			{
+				const isBeforeCursor = symbol.range.start.isBeforeOrEqual(position)
+				const isAfterPrevSymbol = !nearest.previous || symbol.range.start.isAfter(nearest.previous.range.start)
+
+				const isAfterCursor = symbol.range.start.isAfterOrEqual(position)
+				const isBeforeNextSymbol = !nearest.next || symbol.range.start.isBefore(nearest.next.range.start)
+
+				if (isBeforeCursor && isAfterPrevSymbol)
+					nearest.previous = symbol
+
+				if (isAfterCursor && isBeforeNextSymbol)
+					nearest.next = symbol
+			}
+		}
+
+		if (recurseSymbol)
+			findNextAndPreviousSymbols(symbol.children, position, nearest, depth + 1)
+	}
+}
+
+async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: HierarchyDirection, select: boolean)
 {
 	if (!symbols)
 	{
@@ -136,118 +318,127 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Dir
 	const symbolSelections: vscode.Selection[] = []
 	for (const selection of textEditor.selections)
 	{
-		function findCurrentSymbol(symbols: vscode.DocumentSymbol[])
+		/*
+		const nearest: NearestSymbols = {}
+		findNearestSymbols(symbols, selection.active, nearest)
+
+		switch (direction)
 		{
-			for (const symbol of symbols)
+			case HierarchyDirection.Prev:
 			{
-				const containsCursor = symbol.range.contains(selection.active)
-				const isAfterCurr = !currSymbol || symbol.range.start.isAfter(currSymbol.range.start)
+				findNextAndPreviousSymbols(symbols, selection.active, nearest, 0)
 
-				if (containsCursor && isAfterCurr)
-					currSymbol = symbol
+				if (nearest.previous)
+				{
+					symbolRanges.push(nearest.previous.range)
+					const symbolSelection = select
+					? new vscode.Selection(selection.anchor, nearest.previous.range.start)
+					: new vscode.Selection(nearest.previous.range.start, nearest.previous.range.start)
+					symbolSelections.push(symbolSelection)
+				}
+				break
+			}
 
-				findCurrentSymbol(symbol.children)
+			case HierarchyDirection.Next:
+			{
+				findNextAndPreviousSymbols(symbols, selection.active, nearest, 0)
+
+				if (nearest.next)
+				{
+					symbolRanges.push(nearest.next.range)
+					const symbolSelection = select
+						? new vscode.Selection(selection.anchor, nearest.next.range.start)
+						: new vscode.Selection(nearest.next.range.start, nearest.next.range.start)
+					symbolSelections.push(symbolSelection)
+				}
+				break
+			}
+
+			case HierarchyDirection.Parent:
+			{
+				if (nearest.parent)
+				{
+					symbolRanges.push(nearest.parent.range)
+					const symbolSelection = select
+						? new vscode.Selection(selection.anchor, nearest.parent.range.start)
+						: new vscode.Selection(nearest.parent.range.start, nearest.parent.range.start)
+					symbolSelections.push(symbolSelection)
+				}
+				break
+			}
+
+			case HierarchyDirection.Child:
+			{
+				findChildSymbol(symbols, selection.active, nearest)
+
+				if (nearest.child)
+				{
+					symbolRanges.push(nearest.child.range)
+					const symbolSelection = select
+						? new vscode.Selection(selection.anchor, nearest.child.range.start)
+						: new vscode.Selection(nearest.child.range.start, nearest.child.range.start)
+					symbolSelections.push(symbolSelection)
+				}
+				break
 			}
 		}
+		*/
 
-		function findNearestSymbols(symbols: vscode.DocumentSymbol[], depth: number)
+		const nearest: NearestSymbols = {}
+		findNearestSymbols(symbols, selection.active, nearest)
+		switch (direction)
 		{
-			for (const symbol of symbols)
+			case HierarchyDirection.Prev:
 			{
-				const isCurrSymbol = symbol == currSymbol
-				const isTopLevel = depth == 0
-
-				let skipUnlessTopLevel = false
-				switch (symbol.kind)
+				if (nearest.previous)
 				{
-					case vscode.SymbolKind.Property:
-					case vscode.SymbolKind.Field:
-					case vscode.SymbolKind.Constructor:
-					case vscode.SymbolKind.Variable:
-					case vscode.SymbolKind.String:
-					case vscode.SymbolKind.Number:
-					case vscode.SymbolKind.Boolean:
-					case vscode.SymbolKind.Array:
-					case vscode.SymbolKind.Object:
-					case vscode.SymbolKind.Key:
-					case vscode.SymbolKind.EnumMember:
-					case vscode.SymbolKind.Event:
-					case vscode.SymbolKind.TypeParameter:
-						skipUnlessTopLevel = true
-						break
+					symbolRanges.push(nearest.previous.range)
+					const symbolSelection = select
+					? new vscode.Selection(selection.anchor, nearest.previous.range.start)
+					: new vscode.Selection(nearest.previous.range.start, nearest.previous.range.start)
+					symbolSelections.push(symbolSelection)
 				}
-
-				let alwaysSkip = false
-				switch (symbol.kind)
-				{
-					case vscode.SymbolKind.Class:
-					case vscode.SymbolKind.Struct:
-						alwaysSkip ||= symbol.detail.includes("declaration")
-						break
-				}
-				alwaysSkip ||= symbol.detail.includes("typedef")
-
-				let recurseSymbol = false
-				switch (symbol.kind)
-				{
-					case vscode.SymbolKind.File:
-					case vscode.SymbolKind.Module:
-					case vscode.SymbolKind.Namespace:
-					case vscode.SymbolKind.Package:
-					case vscode.SymbolKind.Class:
-					case vscode.SymbolKind.Interface:
-					case vscode.SymbolKind.Struct:
-						recurseSymbol = true
-						break
-				}
-
-				if (!isCurrSymbol && (isTopLevel || !skipUnlessTopLevel) && !alwaysSkip)
-				{
-					const isSameRangeAsCurr = currSymbol && symbol.range.isEqual(currSymbol.range)
-					if (!isSameRangeAsCurr)
-					{
-						const isBeforeCursor = symbol.range.start.isBeforeOrEqual(selection.active)
-						const isAfterPrevSymbol = !prevSymbol || symbol.range.start.isAfter(prevSymbol.range.start)
-
-						const isAfterCursor = symbol.range.start.isAfterOrEqual(selection.active)
-						const isBeforeNextSymbol = !nextSymbol || symbol.range.start.isBefore(nextSymbol.range.start)
-
-						if (isBeforeCursor && isAfterPrevSymbol)
-							prevSymbol = symbol
-
-						if (isAfterCursor && isBeforeNextSymbol)
-							nextSymbol = symbol
-					}
-				}
-
-				if (recurseSymbol)
-					findNearestSymbols(symbol.children, depth + 1)
+				break
 			}
-		}
 
-		let currSymbol: vscode.DocumentSymbol | undefined
-		findCurrentSymbol(symbols)
+			case HierarchyDirection.Next:
+			{
+				if (nearest.next)
+				{
+					symbolRanges.push(nearest.next.range)
+					const symbolSelection = select
+					? new vscode.Selection(selection.anchor, nearest.next.range.start)
+					: new vscode.Selection(nearest.next.range.start, nearest.next.range.start)
+					symbolSelections.push(symbolSelection)
+				}
+				break
+			}
 
-		let prevSymbol: vscode.DocumentSymbol | undefined
-		let nextSymbol: vscode.DocumentSymbol | undefined
-		findNearestSymbols(symbols, 0)
+			case HierarchyDirection.Parent:
+			{
+				if (nearest.parent)
+				{
+					symbolRanges.push(nearest.parent.range)
+					const symbolSelection = select
+					? new vscode.Selection(selection.anchor, nearest.parent.range.start)
+					: new vscode.Selection(nearest.parent.range.start, nearest.parent.range.start)
+					symbolSelections.push(symbolSelection)
+				}
+				break
+			}
 
-		if (direction == Direction.Prev && prevSymbol)
-		{
-			symbolRanges.push(prevSymbol.range)
-			const symbolSelection = select
-				? new vscode.Selection(selection.anchor, prevSymbol.range.start)
-				: new vscode.Selection(prevSymbol.range.start, prevSymbol.range.start)
-			symbolSelections.push(symbolSelection)
-		}
-
-		if (direction == Direction.Next && nextSymbol)
-		{
-			symbolRanges.push(nextSymbol.range)
-			const symbolSelection = select
-				? new vscode.Selection(selection.anchor, nextSymbol.range.start)
-				: new vscode.Selection(nextSymbol.range.start, nextSymbol.range.start)
-			symbolSelections.push(symbolSelection)
+			case HierarchyDirection.Child:
+			{
+				if (nearest.child)
+				{
+					symbolRanges.push(nearest.child.range)
+					const symbolSelection = select
+					? new vscode.Selection(selection.anchor, nearest.child.range.start)
+					: new vscode.Selection(nearest.child.range.start, nearest.child.range.start)
+					symbolSelections.push(symbolSelection)
+				}
+				break
+			}
 		}
 	}
 
@@ -255,6 +446,7 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Dir
 	{
 		textEditor.selections = symbolSelections
 		textEditor.revealRange(symbolRanges[0])
+		textEditor.revealRange(symbolRanges[0], vscode.TextEditorRevealType.InCenter)
 
 		if (!select)
 		{
