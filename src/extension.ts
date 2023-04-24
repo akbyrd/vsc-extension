@@ -141,16 +141,17 @@ type NearestSymbols =
 	nested?:   vscode.DocumentSymbol
 }
 
-// TODO: Parent doesn't work from inside a function
 function findNearestSymbols(symbols: vscode.DocumentSymbol[], position: vscode.Position, nearest: NearestSymbols)
 {
-	// NOTE: This functions makes several assumptions:
-	// * Symbols are sorted by start position
+	// NOTE: This function makes several assumptions:
+	// * Symbols are not necessarily sorted by start position
 	// * Symbols fully enclose their children
+	// * Top level symbols might be physically located inside other symbols
 
-	// NOTE: C++ - Friend functions inside classes are hoisted out of the class.
+	// NOTE: C++ symbols are not sorted by position
+	// NOTE: C++ friend functions inside classes are hoisted out of the class
 
-	const x = 0
+	let didRecurse = false
 	for (let i = 0; i < symbols.length; i++)
 	{
 		const symbol = symbols[i]
@@ -180,7 +181,7 @@ function findNearestSymbols(symbols: vscode.DocumentSymbol[], position: vscode.P
 				nearest.previous = undefined
 				nearest.next     = undefined
 				findNearestSymbols(symbol.children, position, nearest)
-				continue
+				didRecurse = true
 			}
 		}
 		else
@@ -191,21 +192,18 @@ function findNearestSymbols(symbols: vscode.DocumentSymbol[], position: vscode.P
 			if (isBeforeCursor && isAfterPrevSymbol)
 				nearest.previous = symbol
 
-			const isAfterCursor = symbol.range.start.isAfter(position)
-			const isBeforeNextSymbol = !nearest.next || symbol.range.start.isBefore(nearest.next.range.start)
-
 			const isNestedSymbol = nearest.current && nearest.current.range.contains(symbol.range)
-			if (isNestedSymbol)
-				nearest.nested = symbol
-
 			const atSymbolStart = symbol.range.start.isEqual(position)
 			const skipNested = isNestedSymbol && atSymbolStart
 
-			if (isAfterCursor && isBeforeNextSymbol && !skipNested)
-			{
+			if (isNestedSymbol)
+				nearest.nested = symbol
+
+			const isAfterCursor = symbol.range.start.isAfter(position)
+			const isBeforeNextSymbol = !nearest.next || symbol.range.start.isBefore(nearest.next.range.start)
+
+			if (isAfterCursor && isBeforeNextSymbol && !skipNested && !didRecurse)
 				nearest.next = symbol
-				return
-			}
 		}
 	}
 }
