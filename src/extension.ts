@@ -186,23 +186,31 @@ function findNearestSymbols(symbols: vscode.DocumentSymbol[], position: vscode.P
 		}
 		else
 		{
-			const isBeforeCursor = symbol.range.start.isBefore(position)
-			const isAfterPrevSymbol = !nearest.previous || symbol.range.start.isAfter(nearest.previous.range.start)
+			// NOTE: This won't work if a nested symbol occurs before the symbol it's embedded in
+			// TODO: Try handling nested symbols in a second pass
 
-			if (isBeforeCursor && isAfterPrevSymbol)
-				nearest.previous = symbol
+			const atSymbolStart = !!(nearest.current && nearest.current.range.start.isEqual(position))
 
-			const isNestedSymbol = nearest.current && nearest.current.range.contains(symbol.range)
-			const atSymbolStart = symbol.range.start.isEqual(position)
-			const skipNested = isNestedSymbol && atSymbolStart
+			const isNestedInCurrent = !!(nearest.current && nearest.current.range.contains(symbol.range))
+			const isBeforeNested = !!(!nearest.nested || symbol.range.start.isBefore(nearest.nested.range.start))
+			const skipNested = atSymbolStart
 
-			if (isNestedSymbol)
+			if (isNestedInCurrent && isBeforeNested && skipNested)
 				nearest.nested = symbol
 
-			const isAfterCursor = symbol.range.start.isAfter(position)
-			const isBeforeNextSymbol = !nearest.next || symbol.range.start.isBefore(nearest.next.range.start)
+			const isBeforeCursor = symbol.range.start.isBefore(position)
+			const isAfterPrevSymbol = !!(!nearest.previous || symbol.range.start.isAfter(nearest.previous.range.start))
+			const isNestedInPrevious = !!(nearest.previous && nearest.previous.range.contains(symbol.range))
+			const skipPrev = isNestedInPrevious
 
-			if (isAfterCursor && isBeforeNextSymbol && !skipNested && !didRecurse)
+			if (isBeforeCursor && isAfterPrevSymbol && !skipPrev)
+				nearest.previous = symbol
+
+			const isAfterCursor = symbol.range.start.isAfter(position)
+			const isBeforeNextSymbol = !!(!nearest.next || symbol.range.start.isBefore(nearest.next.range.start))
+			const skipNext = isNestedInCurrent && atSymbolStart
+
+			if (isAfterCursor && isBeforeNextSymbol && !skipNext)
 				nearest.next = symbol
 		}
 	}
