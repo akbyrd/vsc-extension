@@ -26,18 +26,20 @@ export function activate(context: vscode.ExtensionContext)
 	)
 
 	vscode.window.onDidChangeTextEditorSelection(e => { e.textEditor.setDecorations(symbolHighlightDecoration, []) })
-	vscode.window.onDidChangeActiveTextEditor(() => { symbolInfo = undefined })
-	vscode.workspace.onDidChangeTextDocument(() => { symbolInfo = undefined })
+	vscode.window.onDidChangeActiveTextEditor(() => { rootSymbols = undefined })
+	vscode.workspace.onDidChangeTextDocument(() => { rootSymbols = undefined })
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Globals
 
-let symbolInfo: SymbolInfo | undefined
+let rootSymbols: vscode.DocumentSymbol[] | undefined
 let taskArgs: object | undefined
 
 const symbolHighlightDecoration = vscode.window.createTextEditorDecorationType({
 	backgroundColor: new vscode.ThemeColor("editor.rangeHighlightBackground"),
+	overviewRulerColor: new vscode.ThemeColor("editorOverviewRuler.rangeHighlightForeground"),
+	overviewRulerLane: vscode.OverviewRulerLane.Full,
 	isWholeLine: true,
 })
 
@@ -132,16 +134,8 @@ async function cursorMoveTo_blankLine_center(textEditor: vscode.TextEditor, dire
 	scrollTo_cursor(textEditor)
 }
 
-type SymbolInfo =
-{
-	symbols:        vscode.DocumentSymbol[]
-	nestedToParent: Map<vscode.DocumentSymbol, vscode.DocumentSymbol>
-	parentToNested: Map<vscode.DocumentSymbol, vscode.DocumentSymbol[]>
-}
-
 type NearestSymbols =
 {
-	root?:     vscode.DocumentSymbol
 	parent?:   vscode.DocumentSymbol
 	current?:  vscode.DocumentSymbol
 	child?:    vscode.DocumentSymbol
@@ -149,7 +143,7 @@ type NearestSymbols =
 	next?:     vscode.DocumentSymbol
 }
 
-function findNearestSymbols(symbolInfo: SymbolInfo, position: vscode.Position): NearestSymbols
+function findNearestSymbols(rootSymbols: vscode.DocumentSymbol[], position: vscode.Position): NearestSymbols
 {
 	// NOTE: This function makes several assumptions:
 	// * Symbols are not necessarily sorted by start position
@@ -161,165 +155,72 @@ function findNearestSymbols(symbolInfo: SymbolInfo, position: vscode.Position): 
 	// NOTE: C++ friend classes inside classes are hoisted to root level (only declarations are allowed)
 	// NOTE: C++ friend symbols currently cannot be nested because symbols in functions are ignored
 
-	// [x] iterate roots
-	// [x] recurse to find parent, current, child
-	// [x] current is null unless at start
-	// [x] collect all results
-	// [x] pick the deepest one
-	// [x] iterate roots to find nested
-	// [x] reject nested under anything other than parent
-	// [x] iterate parent nested to find parent, current
-	// [x] iterate current children & current nested to find child
-	// [x] iterate parent children & parent nested to find previous and next
+	// TODO: Remember last child until the cursor moves
+	// TODO: Deal with the fallback to nearest.current
+	// TODO: Test "select" variants
+	// TODO: Profile performance
+	// TODO: Organize functions
 
-	// TODO: Try out the selectionRange of the symbol
-	// TODO: There's a nice scrollbar overlay when using built-in symbol navigation
-	// TODO: Test with nested symbols before current
-
-	function shouldSkipSymbol(symbol: vscode.DocumentSymbol)
+	function findParentAndCurrent(symbols: vscode.DocumentSymbol[], position: vscode.Position, nearest: NearestSymbols)
 	{
-		let skipSymbol = false
-		switch (symbol.kind)
+		for (const symbol of symbols)
 		{
-			case vscode.SymbolKind.Class:
-			case vscode.SymbolKind.Enum:
-			case vscode.SymbolKind.Struct:
-				skipSymbol ||= symbol.detail.includes("declaration")
-				break
-		}
-		skipSymbol ||= symbol.detail.includes("typedef")
-		return skipSymbol
-	}
-
-	function findParentAndCurrent(symbol: vscode.DocumentSymbol, position: vscode.Position, nearest: NearestSymbols)
-	{
-		const containsCursor = symbol.range.contains(position)
-		if (containsCursor)
-		{
-			const atCurrentStart = symbol.range.start.isEqual(position)
-			if (atCurrentStart)
+			let skipSymbol = false
+			switch (symbol.kind)
 			{
-				nearest.parent  = nearest.current
-				nearest.current = symbol
+				case vscode.SymbolKind.Class:
+				case vscode.SymbolKind.Enum:
+				case vscode.SymbolKind.Struct:
+					skipSymbol ||= symbol.detail.includes("declaration")
+					break
 			}
-			else
+			skipSymbol ||= symbol.detail.includes("typedef")
+			if (skipSymbol)
+				continue
+
+			const containsCursor = symbol.range.contains(position)
+			if (containsCursor)
 			{
-				nearest.parent  = symbol
-				nearest.current = undefined
-
-				for (const childSymbol of symbol.children)
+				const atCurrentStart = position.isBeforeOrEqual(symbol.selectionRange.end)
+				if (atCurrentStart || !symbol.children.length)
 				{
-					if (shouldSkipSymbol(childSymbol))
-						continue
-
-					findParentAndCurrent(childSymbol, position, nearest)
+					nearest.current = symbol
+				}
+				else
+				{
+					nearest.parent  = symbol
+					nearest.current = undefined
+					findParentAndCurrent(symbol.children, position, nearest)
 				}
 			}
 		}
 	}
 
-	function selectSmallerSymbol(A: vscode.DocumentSymbol, B: vscode.DocumentSymbol): vscode.DocumentSymbol
+	const nearest: NearestSymbols = {}
+	findParentAndCurrent(rootSymbols, position, nearest)
+
+	const children = (nearest.current ?? nearest.parent)?.children ?? []
+	for (const child of children)
 	{
-		const lineDiffA = A.range.end.line - A.range.start.line
-		const charDiffA = A.range.end.character - A.range.start.character
-
-		const lineDiffB = B.range.end.line - B.range.start.line
-		const charDiffB = B.range.end.character - B.range.start.character
-
-		const isASmaller = lineDiffA < lineDiffB || charDiffA < charDiffB
-		return isASmaller ? A : B
+		const isBeforeChild = !nearest.child || child.range.start.isBefore(nearest.child.range.start)
+		if (isBeforeChild)
+			nearest.child = child
 	}
 
-	let nearest: NearestSymbols = {}
-
-	// TODO: Could skip nested symbols immediately
-	const nearestMap = new Map<vscode.DocumentSymbol, NearestSymbols>
-	for (const symbol of symbolInfo.symbols)
+	const siblings = nearest.parent?.children ?? rootSymbols
+	for (const sibling of siblings)
 	{
-		if (shouldSkipSymbol(symbol))
-			continue
+		const isBeforeCursor = sibling.range.start.isBefore(position)
+		const isAfterPrevSymbol = !nearest.previous || sibling.range.start.isAfter(nearest.previous.range.start)
 
-		const maybeNearest: NearestSymbols = {}
-		findParentAndCurrent(symbol, position, maybeNearest)
+		if (isBeforeCursor && isAfterPrevSymbol)
+			nearest.previous = sibling
 
-		if (maybeNearest.parent || maybeNearest.current)
-		{
-			nearestMap.set(symbol, maybeNearest)
+		const isAfterCursor = sibling.range.start.isAfter(position)
+		const isBeforeNextSymbol = !nearest.next || sibling.range.start.isBefore(nearest.next.range.start)
 
-			const nearestSymbol = nearest.current ?? nearest.parent
-			const maybeNearestSymbol = maybeNearest.current ?? maybeNearest.parent
-			if (!nearestSymbol)
-			{
-				nearest = maybeNearest
-			}
-			else
-			{
-				nearest = selectSmallerSymbol(nearestSymbol, maybeNearestSymbol!) == nearestSymbol
-					? nearest
-					: maybeNearest
-			}
-		}
-	}
-
-	if (nearest.parent)
-	{
-		const nestedInParent = symbolInfo.parentToNested.get(nearest.parent) ?? []
-		for (const nested of nestedInParent)
-		{
-			const nestedNearest = nearestMap.get(nested)
-			if (nestedNearest)
-			{
-				nestedNearest.parent = nearest.parent
-				nearest = nestedNearest
-			}
-		}
-	}
-
-	if (nearest.current)
-	{
-		const nestedInCurrent = symbolInfo.parentToNested.get(nearest.current) ?? []
-		for (const child of nearest.current.children.concat(nestedInCurrent))
-		{
-			const isBeforeChild = !nearest.child || child.range.start.isBefore(nearest.child.range.start)
-			if (isBeforeChild)
-				nearest.child = child
-		}
-	}
-
-	if (nearest.parent)
-	{
-		const nestedInParent = symbolInfo.parentToNested.get(nearest.parent) ?? []
-		for (const sibling of nearest.parent.children.concat(nestedInParent))
-		{
-			const isBeforeCursor = sibling.range.start.isBefore(position)
-			const isAfterPrevSymbol = !nearest.previous || sibling.range.start.isAfter(nearest.previous.range.start)
-
-			if (isBeforeCursor && isAfterPrevSymbol)
-				nearest.previous = sibling
-
-			const isAfterCursor = sibling.range.start.isAfter(position)
-			const isBeforeNextSymbol = !nearest.next || sibling.range.start.isBefore(nearest.next.range.start)
-
-			if (isAfterCursor && isBeforeNextSymbol)
-				nearest.next = sibling
-		}
-	}
-	else
-	{
-		for (const sibling of symbolInfo.symbols.filter(s => !symbolInfo.nestedToParent.has(s)))
-		{
-			const isBeforeCursor = sibling.range.start.isBefore(position)
-			const isAfterPrevSymbol = !nearest.previous || sibling.range.start.isAfter(nearest.previous.range.start)
-
-			if (isBeforeCursor && isAfterPrevSymbol)
-				nearest.previous = sibling
-
-			const isAfterCursor = sibling.range.start.isAfter(position)
-			const isBeforeNextSymbol = !nearest.next || sibling.range.start.isBefore(nearest.next.range.start)
-
-			if (isAfterCursor && isBeforeNextSymbol)
-				nearest.next = sibling
-		}
+		if (isAfterCursor && isBeforeNextSymbol)
+			nearest.next = sibling
 	}
 
 	return nearest
@@ -327,16 +228,14 @@ function findNearestSymbols(symbolInfo: SymbolInfo, position: vscode.Position): 
 
 async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: HierarchyDirection, select: boolean)
 {
-	if (!symbolInfo)
+	if (!rootSymbols)
 	{
 		// Use the DocumentSymbol variation so we can efficiently skip entire sections of the tree
-		const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+		rootSymbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
 			"vscode.executeDocumentSymbolProvider", textEditor.document.uri)
 
-		if (symbols)
+		if (rootSymbols)
 		{
-			symbolInfo = { symbols: symbols, nestedToParent: new Map(), parentToNested: new Map() }
-
 			function mapNestedSymbol(maybeNested: vscode.DocumentSymbol, maybeParents: vscode.DocumentSymbol[]): vscode.DocumentSymbol | undefined
 			{
 				for (const maybeParent of maybeParents)
@@ -352,30 +251,29 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 				return undefined
 			}
 
-			// TODO: Can we push into the children array directly?
-			// TODO: Can we remove nested symbols from the root list?
-			for (const maybeNested of symbols)
+			const nestedSymbols: vscode.DocumentSymbol[] = []
+			for (const maybeNested of rootSymbols)
 			{
-				const parent = mapNestedSymbol(maybeNested, symbols)
+				const parent = mapNestedSymbol(maybeNested, rootSymbols)
 				if (parent)
 				{
-					symbolInfo.nestedToParent.set(maybeNested, parent)
-					symbolInfo.parentToNested.has(parent)
-						? symbolInfo.parentToNested.get(parent)!.push(maybeNested)
-						: symbolInfo.parentToNested.set(parent, [maybeNested])
+					parent.children.push(maybeNested)
+					nestedSymbols.push(maybeNested)
 				}
 			}
+			for (const nested of nestedSymbols)
+				rootSymbols.splice(rootSymbols.findIndex(s => s == nested), 1)
 		}
 	}
 
-	if (!symbolInfo?.symbols.length)
+	if (!rootSymbols?.length)
 		return
 
 	const symbolRanges: vscode.Range[] = []
 	const newSelections: vscode.Selection[] = []
 	for (const selection of textEditor.selections)
 	{
-		const nearest = findNearestSymbols(symbolInfo, selection.active)
+		const nearest = findNearestSymbols(rootSymbols, selection.active)
 
 		let newSymbol
 		switch (direction)
