@@ -234,9 +234,7 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 	// NOTE: C++ friend classes inside classes are hoisted to root level (only declarations are allowed)
 	// NOTE: C++ friend symbols currently cannot be nested because symbols in functions are ignored
 
-	// TODO: Deal with the fallback to nearest.current
 	// TODO: Test "select" variants
-	// TODO: Profile performance
 	// TODO: Keep symbols for all active editors, even if unfocused
 
 	if (!symbolNav)
@@ -317,30 +315,28 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 		switch (direction)
 		{
 			case HierarchyDirection.Prev:
-				//newSymbol = nearest.previous ?? nearest.current
 				newSymbol = nearest.previous
-				symbolNav.lastChild = undefined
 				break
 
 			case HierarchyDirection.Next:
 				newSymbol = nearest.next
-				symbolNav.lastChild = undefined
 				break
 
 			case HierarchyDirection.Parent:
-				//newSymbol = nearest.parent ?? nearest.current
 				newSymbol = nearest.parent
-				symbolNav.lastChild = nearest.current ?? selectClosest([nearest.previous, nearest.next], selection.active)
 				break
 
 			case HierarchyDirection.Child:
 				newSymbol = symbolNav.lastChild ?? nearest.child
-				symbolNav.lastChild = undefined
 				break
 		}
 
 		if (newSymbol)
 		{
+			symbolNav.lastChild = undefined
+			if (direction == HierarchyDirection.Parent)
+				symbolNav.lastChild = nearest.current ?? selectClosest([nearest.previous, nearest.next], selection.active)
+
 			symbolRanges.push(newSymbol.range)
 			const symbolSelection = select
 				? new vscode.Selection(selection.anchor, newSymbol.range.start)
