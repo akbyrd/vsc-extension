@@ -25,9 +25,14 @@ export function activate(context: vscode.ExtensionContext)
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteLine.next",                      deleteLine_next),
 	)
 
-	vscode.window.onDidChangeTextEditorSelection(e => { e.textEditor.setDecorations(symbolHighlightDecoration, []) })
-	vscode.window.onDidChangeActiveTextEditor(() => { symbolNav = undefined })
 	vscode.workspace.onDidChangeTextDocument(() => { symbolNav = undefined })
+	vscode.window.onDidChangeActiveTextEditor(() => { symbolNav = undefined })
+	vscode.window.onDidChangeTextEditorSelection(e => {
+		e.textEditor.setDecorations(symbolHighlightBackground, [])
+		e.textEditor.setDecorations(symbolHighlightBorderLR, [])
+		e.textEditor.setDecorations(symbolHighlightBorderT, [])
+		e.textEditor.setDecorations(symbolHighlightBorderB, [])
+	})
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -36,11 +41,30 @@ export function activate(context: vscode.ExtensionContext)
 let symbolNav: SymbolNavigation | undefined
 let taskArgs: object | undefined
 
-const symbolHighlightDecoration = vscode.window.createTextEditorDecorationType({
-	backgroundColor: new vscode.ThemeColor("editor.rangeHighlightBackground"),
-	overviewRulerColor: new vscode.ThemeColor("editorOverviewRuler.rangeHighlightForeground"),
-	overviewRulerLane: vscode.OverviewRulerLane.Full,
+const symbolHighlightBackground = vscode.window.createTextEditorDecorationType({
 	isWholeLine: true,
+	backgroundColor: new vscode.ThemeColor("editor.rangeHighlightBackground"),
+})
+
+const symbolHighlightBorderLR = vscode.window.createTextEditorDecorationType({
+	isWholeLine: true,
+	borderWidth: "1px",
+	borderStyle: "none solid",
+	borderColor: new vscode.ThemeColor("editor.rangeHighlightBorder"),
+})
+
+const symbolHighlightBorderT = vscode.window.createTextEditorDecorationType({
+	isWholeLine: true,
+	borderWidth: "1px",
+	borderStyle: "solid none none",
+	borderColor: new vscode.ThemeColor("editor.rangeHighlightBorder"),
+})
+
+const symbolHighlightBorderB = vscode.window.createTextEditorDecorationType({
+	isWholeLine: true,
+	borderWidth: "1px",
+	borderStyle: "none none solid",
+	borderColor: new vscode.ThemeColor("editor.rangeHighlightBorder"),
 })
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -357,14 +381,16 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 
 	if (symbolRanges.length)
 	{
-		textEditor.revealRange(symbolRanges[0])
 		textEditor.revealRange(symbolRanges[0], vscode.TextEditorRevealType.InCenter)
 
 		if (!select)
 		{
 			// HACK: This is a workaround for https://github.com/microsoft/vscode/issues/106209
 			await sleep(4)
-			textEditor.setDecorations(symbolHighlightDecoration, symbolRanges)
+			textEditor.setDecorations(symbolHighlightBackground, symbolRanges)
+			textEditor.setDecorations(symbolHighlightBorderLR, symbolRanges)
+			textEditor.setDecorations(symbolHighlightBorderT, symbolRanges.map(r => new vscode.Range(r.start, r.start)))
+			textEditor.setDecorations(symbolHighlightBorderB, symbolRanges.map(r => new vscode.Range(r.end, r.end)))
 		}
 	}
 }
