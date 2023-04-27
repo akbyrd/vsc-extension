@@ -26,14 +26,14 @@ export function activate(context: vscode.ExtensionContext)
 	)
 
 	vscode.window.onDidChangeTextEditorSelection(e => { e.textEditor.setDecorations(symbolHighlightDecoration, []) })
-	vscode.window.onDidChangeActiveTextEditor(() => { rootSymbols = undefined })
-	vscode.workspace.onDidChangeTextDocument(() => { rootSymbols = undefined })
+	vscode.window.onDidChangeActiveTextEditor(() => { symbolNav = undefined })
+	vscode.workspace.onDidChangeTextDocument(() => { symbolNav = undefined })
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Globals
 
-let rootSymbols: vscode.DocumentSymbol[] | undefined
+let symbolNav: SymbolNavigation | undefined
 let taskArgs: object | undefined
 
 const symbolHighlightDecoration = vscode.window.createTextEditorDecorationType({
@@ -134,6 +134,12 @@ async function cursorMoveTo_blankLine_center(textEditor: vscode.TextEditor, dire
 	scrollTo_cursor(textEditor)
 }
 
+type SymbolNavigation =
+{
+	rootSymbols: vscode.DocumentSymbol[]
+	lastChild:   vscode.DocumentSymbol | undefined
+}
+
 type NearestSymbols =
 {
 	parent?:   vscode.DocumentSymbol
@@ -155,11 +161,11 @@ function findNearestSymbols(rootSymbols: vscode.DocumentSymbol[], position: vsco
 	// NOTE: C++ friend classes inside classes are hoisted to root level (only declarations are allowed)
 	// NOTE: C++ friend symbols currently cannot be nested because symbols in functions are ignored
 
-	// TODO: Remember last child until the cursor moves
 	// TODO: Deal with the fallback to nearest.current
 	// TODO: Test "select" variants
 	// TODO: Profile performance
 	// TODO: Organize functions
+	// TODO: Keep symbols for all active editors, even if unfocused
 
 	function findParentAndCurrent(symbols: vscode.DocumentSymbol[], position: vscode.Position, nearest: NearestSymbols)
 	{
@@ -228,10 +234,10 @@ function findNearestSymbols(rootSymbols: vscode.DocumentSymbol[], position: vsco
 
 async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: HierarchyDirection, select: boolean)
 {
-	if (!rootSymbols)
+	if (!symbolNav)
 	{
 		// Use the DocumentSymbol variation so we can efficiently skip entire sections of the tree
-		rootSymbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+		const rootSymbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
 			"vscode.executeDocumentSymbolProvider", textEditor.document.uri)
 
 		if (rootSymbols)
@@ -251,6 +257,8 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 				return undefined
 			}
 
+			symbolNav = { rootSymbols, lastChild: undefined }
+
 			const nestedSymbols: vscode.DocumentSymbol[] = []
 			for (const maybeNested of rootSymbols)
 			{
@@ -266,14 +274,52 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 		}
 	}
 
-	if (!rootSymbols?.length)
+	if (!symbolNav?.rootSymbols.length)
 		return
+
+	function selectClosest(symbols: (vscode.DocumentSymbol | undefined)[], position: vscode.Position): vscode.DocumentSymbol | undefined
+	{
+		let closest: vscode.DocumentSymbol | undefined
+
+		for (const symbol of symbols)
+		{
+			if (!symbol)
+				continue
+
+			if (!closest)
+			{
+				closest = symbol
+				continue
+			}
+
+			const lineDistAStart = Math.abs(position.line - symbol.range.start.line)
+			const lineDistAEnd   = Math.abs(position.line - symbol.range.end.line)
+			const lineDistA = Math.min(lineDistAStart, lineDistAEnd)
+
+			const lineDistBStart = Math.abs(position.line - closest.range.start.line)
+			const lineDistBEnd   = Math.abs(position.line - closest.range.end.line)
+			const lineDistB = Math.min(lineDistBStart, lineDistBEnd)
+
+			const charDistAStart = Math.abs(position.character - symbol.range.start.character)
+			const charDistAEnd   = Math.abs(position.character - symbol.range.end.character)
+			const charDistA = Math.min(charDistAStart, charDistAEnd)
+
+			const charDistBStart = Math.abs(position.character - closest.range.start.character)
+			const charDistBEnd   = Math.abs(position.character - closest.range.end.character)
+			const charDistB = Math.min(charDistBStart, charDistBEnd)
+
+			const aIsCloser = lineDistA < lineDistB || (lineDistA == lineDistB && charDistA < charDistB)
+			closest = aIsCloser ? symbol : closest
+		}
+
+		return closest
+	}
 
 	const symbolRanges: vscode.Range[] = []
 	const newSelections: vscode.Selection[] = []
 	for (const selection of textEditor.selections)
 	{
-		const nearest = findNearestSymbols(rootSymbols, selection.active)
+		const nearest = findNearestSymbols(symbolNav.rootSymbols, selection.active)
 
 		let newSymbol
 		switch (direction)
@@ -281,19 +327,23 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 			case HierarchyDirection.Prev:
 				//newSymbol = nearest.previous ?? nearest.current
 				newSymbol = nearest.previous
+				symbolNav.lastChild = undefined
 				break
 
 			case HierarchyDirection.Next:
 				newSymbol = nearest.next
+				symbolNav.lastChild = undefined
 				break
 
 			case HierarchyDirection.Parent:
 				//newSymbol = nearest.parent ?? nearest.current
 				newSymbol = nearest.parent
+				symbolNav.lastChild = nearest.current ?? selectClosest([nearest.previous, nearest.next], selection.active)
 				break
 
 			case HierarchyDirection.Child:
-				newSymbol = nearest.child
+				newSymbol = symbolNav.lastChild ?? nearest.child
+				symbolNav.lastChild = undefined
 				break
 		}
 
