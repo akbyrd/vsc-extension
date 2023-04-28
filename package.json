@@ -62,7 +62,7 @@
       },
       {
         "command": "akbyrd.editor.cursorMoveTo.symbol.next",
-        "title": "Move to Previous Symbol"
+        "title": "Move to Next Symbol"
       },
       {
         "command": "akbyrd.editor.cursorMoveTo.symbol.prnt",
@@ -78,7 +78,7 @@
       },
       {
         "command": "akbyrd.editor.cursorSelectTo.symbol.next",
-        "title": "Select to Previous Symbol"
+        "title": "Select to Next Symbol"
       },
       {
         "command": "akbyrd.editor.cursorSelectTo.symbol.prnt",
