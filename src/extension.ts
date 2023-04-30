@@ -286,7 +286,6 @@ const symbolNav: SymbolNavigation = {
 	}),
 }
 
-// TODO: Typescript doesn't have nested symbols for types
 type SymbolNavigation =
 {
 	textEditorSymbols:   Map<vscode.TextEditor, DocumentSymbols>
@@ -294,6 +293,7 @@ type SymbolNavigation =
 	highlightBorderLR:   vscode.TextEditorDecorationType
 	highlightBorderT:    vscode.TextEditorDecorationType
 	highlightBorderB:    vscode.TextEditorDecorationType
+	statusBarMessage?:   vscode.Disposable
 }
 
 type DocumentSymbols =
@@ -327,6 +327,7 @@ async function cacheDocumentSymbols(textEditor: vscode.TextEditor): Promise<Docu
 
 			documentSymbols = { rootSymbols, lastChild: undefined }
 			symbolNav.textEditorSymbols.set(textEditor, documentSymbols)
+			symbolNav.statusBarMessage?.dispose()
 
 			const nestedSymbols: vscode.DocumentSymbol[] = []
 			for (const maybeNested of rootSymbols)
@@ -340,6 +341,11 @@ async function cacheDocumentSymbols(textEditor: vscode.TextEditor): Promise<Docu
 			}
 			for (const nested of nestedSymbols)
 				rootSymbols.splice(rootSymbols.findIndex(s => s == nested), 1)
+		}
+		else
+		{
+			symbolNav.statusBarMessage?.dispose()
+			symbolNav.statusBarMessage = vscode.window.setStatusBarMessage("No symbols found in this file", 3000)
 		}
 	}
 	return documentSymbols
@@ -509,7 +515,7 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 	const newSelections: vscode.Selection[] = []
 	for (const selection of textEditor.selections)
 	{
-		const position = selection.active
+		const position = selection.start
 		const rootSymbols = documentSymbols.rootSymbols
 
 		const nearest: NearestSymbols = {}
@@ -563,11 +569,11 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 		{
 			documentSymbols.lastChild = undefined
 			if (direction == HierarchyDirection.Parent)
-			documentSymbols.lastChild = nearest.current ?? selectClosest([nearest.previous, nearest.next], selection.active)
+				documentSymbols.lastChild = nearest.current ?? selectClosest([nearest.previous, nearest.next], selection.active)
 
 			symbolRanges.push(newSymbol.range)
 			const symbolSelection = select
-				? new vscode.Selection(selection.anchor, newSymbol.range.start)
+				? new vscode.Selection(newSymbol.range.start, newSymbol.range.end)
 				: new vscode.Selection(newSymbol.range.start, newSymbol.range.start)
 			newSelections.push(symbolSelection)
 		}
