@@ -25,81 +25,22 @@ export function activate(context: vscode.ExtensionContext)
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteLine.next",                      deleteLine_next),
 	)
 
-	vscode.workspace.onDidChangeTextDocument(() => { symbolNav = undefined })
-	vscode.window.onDidChangeActiveTextEditor(() => { symbolNav = undefined })
-	vscode.window.onDidChangeTextEditorSelection(e => {
-		e.textEditor.setDecorations(symbolHighlightBackground, [])
-		e.textEditor.setDecorations(symbolHighlightBorderLR, [])
-		e.textEditor.setDecorations(symbolHighlightBorderT, [])
-		e.textEditor.setDecorations(symbolHighlightBorderB, [])
-	})
+	vscode.workspace.onDidChangeTextDocument(e => removeDocument(e.document))
+	vscode.window.onDidChangeVisibleTextEditors(removeNonVisibleTextEditors)
+	vscode.window.onDidChangeTextEditorSelection(e => clearSymbolHighlights(e.textEditor))
 }
-
-// ---------------------------------------------------------------------------------------------------------------------
-// Globals
-
-let symbolNav: SymbolNavigation | undefined
-let taskArgs: object | undefined
-
-const symbolHighlightBackground = vscode.window.createTextEditorDecorationType({
-	isWholeLine: true,
-	backgroundColor: new vscode.ThemeColor("editor.rangeHighlightBackground"),
-})
-
-const symbolHighlightBorderLR = vscode.window.createTextEditorDecorationType({
-	isWholeLine: true,
-	borderWidth: "1px",
-	borderStyle: "none solid",
-	borderColor: new vscode.ThemeColor("editor.rangeHighlightBorder"),
-})
-
-const symbolHighlightBorderT = vscode.window.createTextEditorDecorationType({
-	isWholeLine: true,
-	borderWidth: "1px",
-	borderStyle: "solid none none",
-	borderColor: new vscode.ThemeColor("editor.rangeHighlightBorder"),
-})
-
-const symbolHighlightBorderB = vscode.window.createTextEditorDecorationType({
-	isWholeLine: true,
-	borderWidth: "1px",
-	borderStyle: "none none solid",
-	borderColor: new vscode.ThemeColor("editor.rangeHighlightBorder"),
-})
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Utilities
-
-enum Direction
-{
-	Prev,
-	Next,
-}
-
-enum HierarchyDirection
-{
-	Prev,
-	Next,
-	Parent,
-	Child,
-}
 
 function sleep(ms: number) {
 	return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-function logRangePosition(start: vscode.Position, end: vscode.Position)
-{
-	console.log("%d/%d -> %d/%d", start.line, start.character, end.line, end.character)
-}
-
-function logRange(range: vscode.Range)
-{
-	console.log("%d/%d -> %d/%d", range.start.line, range.start.character, range.end.line, range.end.character)
-}
-
 // ---------------------------------------------------------------------------------------------------------------------
 // Plain Commands
+
+let taskArgs: object | undefined
 
 type RunTaskArgs =
 {
@@ -144,6 +85,12 @@ function task_getArgs(argName: string)
 // ---------------------------------------------------------------------------------------------------------------------
 // Text Editor Commands
 
+enum Direction
+{
+	Prev,
+	Next,
+}
+
 function scrollTo_cursor(textEditor: vscode.TextEditor)
 {
 	const cursorPos = textEditor.selection.active
@@ -158,7 +105,117 @@ async function cursorMoveTo_blankLine_center(textEditor: vscode.TextEditor, dire
 	scrollTo_cursor(textEditor)
 }
 
+async function deleteChunk(textEditor: vscode.TextEditor, direction: Direction)
+{
+	switch (direction)
+	{
+		case Direction.Prev:
+		{
+			await vscode.commands.executeCommand("cursorMove", { "to": "prevBlankLine", "by": "wrappedLine", "select": true })
+			await vscode.commands.executeCommand("deleteLeft")
+			break
+		}
+
+		case Direction.Next:
+		{
+			await vscode.commands.executeCommand("cursorMove", { "to": "nextBlankLine", "by": "wrappedLine", "select": true })
+			await vscode.commands.executeCommand("deleteRight")
+			break
+		}
+	}
+}
+
+function deleteLine_prev(textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit)
+{
+	const deletedLines = new Set<number>
+	for (const selection of textEditor.selections)
+	{
+		if (selection.start.line == 0)
+			continue
+
+		const selectedLine = selection.start.line
+		const lineToDelete = Math.max(selectedLine - 1, 0)
+
+		if (!deletedLines.has(lineToDelete))
+		{
+			deletedLines.add(lineToDelete)
+
+			const prevLine = textEditor.document.lineAt(lineToDelete)
+			const toDelete = prevLine.rangeIncludingLineBreak
+			edit.delete(toDelete)
+		}
+	}
+}
+
+function deleteLine_next(textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit)
+{
+	const deletedLines = new Set<number>
+	for (const selection of textEditor.selections)
+	{
+		if (selection.end.line == textEditor.document.lineCount - 1)
+			continue
+
+		const selectedLine = selection.end.line
+		const lineToDelete = Math.max(selectedLine + 1, 0)
+
+		if (!deletedLines.has(lineToDelete))
+		{
+			deletedLines.add(lineToDelete)
+
+			const currLine = textEditor.document.lineAt(selectedLine)
+			const nextLine = textEditor.document.lineAt(lineToDelete)
+
+			const newline = new vscode.Range(currLine.range.end, currLine.rangeIncludingLineBreak.end)
+			const toDelete = newline.union(nextLine.range)
+			edit.delete(toDelete)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Text Editor Commands - Symbol Navigation
+
+const symbolNav: SymbolNavigation = {
+	textEditorSymbols: new Map<vscode.TextEditor, DocumentSymbols>,
+
+	highlightBackground: vscode.window.createTextEditorDecorationType({
+		isWholeLine: true,
+		backgroundColor: new vscode.ThemeColor("editor.rangeHighlightBackground"),
+	}),
+
+	highlightBorderLR: vscode.window.createTextEditorDecorationType({
+		isWholeLine: true,
+		borderWidth: "1px",
+		borderStyle: "none solid",
+		borderColor: new vscode.ThemeColor("editor.rangeHighlightBorder"),
+	}),
+
+	highlightBorderT: vscode.window.createTextEditorDecorationType({
+		isWholeLine: true,
+		borderWidth: "1px",
+		borderStyle: "solid none none",
+		borderColor: new vscode.ThemeColor("editor.rangeHighlightBorder"),
+	}),
+
+	highlightBorderB: vscode.window.createTextEditorDecorationType({
+		isWholeLine: true,
+		borderWidth: "1px",
+		borderStyle: "none none solid",
+		borderColor: new vscode.ThemeColor("editor.rangeHighlightBorder"),
+	}),
+}
+
+// TODO: Typescript doesn't have nested symbols for types
 type SymbolNavigation =
+{
+	textEditorSymbols:   Map<vscode.TextEditor, DocumentSymbols>
+	highlightBackground: vscode.TextEditorDecorationType
+	highlightBorderLR:   vscode.TextEditorDecorationType
+	highlightBorderT:    vscode.TextEditorDecorationType
+	highlightBorderB:    vscode.TextEditorDecorationType
+}
+
+type DocumentSymbols =
 {
 	rootSymbols: vscode.DocumentSymbol[]
 	lastChild:   vscode.DocumentSymbol | undefined
@@ -171,6 +228,14 @@ type NearestSymbols =
 	child?:    vscode.DocumentSymbol
 	previous?: vscode.DocumentSymbol
 	next?:     vscode.DocumentSymbol
+}
+
+enum HierarchyDirection
+{
+	Prev,
+	Next,
+	Parent,
+	Child,
 }
 
 function symbolFilter(symbol: vscode.DocumentSymbol): boolean
@@ -248,6 +313,52 @@ function selectClosest(symbols: (vscode.DocumentSymbol | undefined)[], position:
 	return closest
 }
 
+function removeNonVisibleTextEditors(visibleTextEditors: readonly vscode.TextEditor[])
+{
+	if (!symbolNav)
+		return
+
+	const toRemove: vscode.TextEditor[] = []
+	for (const pair of symbolNav.textEditorSymbols)
+	{
+		const textEditor = pair[0]
+		if (!visibleTextEditors.includes(textEditor))
+			toRemove.push(textEditor)
+	}
+
+	for (const textEditor of toRemove)
+		symbolNav.textEditorSymbols.delete(textEditor)
+}
+
+function removeDocument(textDocument: vscode.TextDocument)
+{
+	if (!symbolNav)
+		return
+
+	const toRemove: vscode.TextEditor[] = []
+	for (const pair of symbolNav.textEditorSymbols)
+	{
+		const textEditor = pair[0]
+		if (textEditor.document == textDocument)
+			toRemove.push(textEditor)
+	}
+
+	for (const textEditor of toRemove)
+		symbolNav.textEditorSymbols.delete(textEditor)
+}
+
+function clearSymbolHighlights(textEditor: vscode.TextEditor)
+{
+	const documentSymbols = symbolNav.textEditorSymbols.get(textEditor)
+	if (documentSymbols)
+		documentSymbols.lastChild = undefined
+
+	textEditor.setDecorations(symbolNav.highlightBackground, [])
+	textEditor.setDecorations(symbolNav.highlightBorderLR, [])
+	textEditor.setDecorations(symbolNav.highlightBorderT, [])
+	textEditor.setDecorations(symbolNav.highlightBorderB, [])
+}
+
 async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: HierarchyDirection, select: boolean)
 {
 	// NOTE: This function makes several assumptions:
@@ -263,7 +374,8 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 	// NOTE: Measured 0.4 ms to navigate in a file with 1006 symbols
 	// NOTE: Measured 5.0 ms to gather symbols in a file with 1006 symbols
 
-	if (!symbolNav)
+	let documentSymbols = symbolNav.textEditorSymbols.get(textEditor)
+	if (!documentSymbols)
 	{
 		// Use the DocumentSymbol variation so we can efficiently skip entire sections of the tree
 		const rootSymbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
@@ -283,7 +395,8 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 				return undefined
 			}
 
-			symbolNav = { rootSymbols, lastChild: undefined }
+			documentSymbols = { rootSymbols, lastChild: undefined }
+			symbolNav.textEditorSymbols.set(textEditor, documentSymbols)
 
 			const nestedSymbols: vscode.DocumentSymbol[] = []
 			for (const maybeNested of rootSymbols)
@@ -300,7 +413,7 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 		}
 	}
 
-	if (!symbolNav?.rootSymbols.length)
+	if (!documentSymbols?.rootSymbols.length)
 		return
 
 	const symbolRanges: vscode.Range[] = []
@@ -308,7 +421,7 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 	for (const selection of textEditor.selections)
 	{
 		const position = selection.active
-		const rootSymbols = symbolNav.rootSymbols
+		const rootSymbols = documentSymbols.rootSymbols
 
 		const nearest: NearestSymbols = {}
 		findParentAndCurrent(rootSymbols, position, nearest)
@@ -353,15 +466,15 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 				break
 
 			case HierarchyDirection.Child:
-				newSymbol = symbolNav.lastChild ?? nearest.child
+				newSymbol = documentSymbols.lastChild ?? nearest.child
 				break
 		}
 
 		if (newSymbol)
 		{
-			symbolNav.lastChild = undefined
+			documentSymbols.lastChild = undefined
 			if (direction == HierarchyDirection.Parent)
-				symbolNav.lastChild = nearest.current ?? selectClosest([nearest.previous, nearest.next], selection.active)
+			documentSymbols.lastChild = nearest.current ?? selectClosest([nearest.previous, nearest.next], selection.active)
 
 			symbolRanges.push(newSymbol.range)
 			const symbolSelection = select
@@ -387,77 +500,10 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 		{
 			// HACK: This is a workaround for https://github.com/microsoft/vscode/issues/106209
 			await sleep(4)
-			textEditor.setDecorations(symbolHighlightBackground, symbolRanges)
-			textEditor.setDecorations(symbolHighlightBorderLR, symbolRanges)
-			textEditor.setDecorations(symbolHighlightBorderT, symbolRanges.map(r => new vscode.Range(r.start, r.start)))
-			textEditor.setDecorations(symbolHighlightBorderB, symbolRanges.map(r => new vscode.Range(r.end, r.end)))
-		}
-	}
-}
-
-async function deleteChunk(textEditor: vscode.TextEditor, direction: Direction)
-{
-	switch (direction)
-	{
-		case Direction.Prev:
-		{
-			await vscode.commands.executeCommand("cursorMove", { "to": "prevBlankLine", "by": "wrappedLine", "select": true })
-			await vscode.commands.executeCommand("deleteLeft")
-			break
-		}
-
-		case Direction.Next:
-		{
-			await vscode.commands.executeCommand("cursorMove", { "to": "nextBlankLine", "by": "wrappedLine", "select": true })
-			await vscode.commands.executeCommand("deleteRight")
-			break
-		}
-	}
-}
-
-function deleteLine_prev(textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit)
-{
-	const deletedLines = new Set<number>
-	for (const selection of textEditor.selections)
-	{
-		if (selection.start.line == 0)
-			continue
-
-		const selectedLine = selection.start.line
-		const lineToDelete = Math.max(selectedLine - 1, 0)
-
-		if (!deletedLines.has(lineToDelete))
-		{
-			deletedLines.add(lineToDelete)
-
-			const prevLine = textEditor.document.lineAt(lineToDelete)
-			const toDelete = prevLine.rangeIncludingLineBreak
-			edit.delete(toDelete)
-		}
-	}
-}
-
-function deleteLine_next(textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit)
-{
-	const deletedLines = new Set<number>
-	for (const selection of textEditor.selections)
-	{
-		if (selection.end.line == textEditor.document.lineCount - 1)
-			continue
-
-		const selectedLine = selection.end.line
-		const lineToDelete = Math.max(selectedLine + 1, 0)
-
-		if (!deletedLines.has(lineToDelete))
-		{
-			deletedLines.add(lineToDelete)
-
-			const currLine = textEditor.document.lineAt(selectedLine)
-			const nextLine = textEditor.document.lineAt(lineToDelete)
-
-			const newline = new vscode.Range(currLine.range.end, currLine.rangeIncludingLineBreak.end)
-			const toDelete = newline.union(nextLine.range)
-			edit.delete(toDelete)
+			textEditor.setDecorations(symbolNav.highlightBackground, symbolRanges)
+			textEditor.setDecorations(symbolNav.highlightBorderLR, symbolRanges)
+			textEditor.setDecorations(symbolNav.highlightBorderT, symbolRanges.map(r => new vscode.Range(r.start, r.start)))
+			textEditor.setDecorations(symbolNav.highlightBorderB, symbolRanges.map(r => new vscode.Range(r.end, r.end)))
 		}
 	}
 }
