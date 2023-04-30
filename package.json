@@ -103,6 +103,14 @@
       {
         "command": "akbyrd.editor.deleteLine.next",
         "title": "Delete Line Below Cursor"
+      },
+      {
+        "command": "akbyrd.editor.fold.definitions",
+        "title": "Fold All Definitions"
+      },
+      {
+        "command": "akbyrd.editor.fold.functions",
+        "title": "Fold All Functions"
       }
     ],
     "menus": {
@@ -157,6 +165,14 @@
         },
         {
           "command": "akbyrd.editor.deleteLine.next",
+          "when": "activeEditor"
+        },
+        {
+          "command": "akbyrd.editor.fold.definitions",
+          "when": "activeEditor"
+        },
+        {
+          "command": "akbyrd.editor.fold.functions",
           "when": "activeEditor"
         }
       ]
