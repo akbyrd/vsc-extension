@@ -23,11 +23,13 @@ export function activate(context: vscode.ExtensionContext)
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteChunk.next",                     t => deleteChunk(t, Direction.Next)),
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteLine.prev",                      deleteLine_prev),
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteLine.next",                      deleteLine_next),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.fold.definitions",                     t => fold_definitions(t, true)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.fold.functions",                       t => fold_definitions(t, false)),
 	)
 
-	vscode.workspace.onDidChangeTextDocument(e => removeDocument(e.document))
-	vscode.window.onDidChangeVisibleTextEditors(removeNonVisibleTextEditors)
-	vscode.window.onDidChangeTextEditorSelection(e => clearSymbolHighlights(e.textEditor))
+	vscode.workspace.onDidChangeTextDocument(e => removeDocumentSymbols(e.document))
+	vscode.window.onDidChangeVisibleTextEditors(removeDocumentSymbolsForNonVisibleEditors)
+	vscode.window.onDidChangeTextEditorSelection(e => removeSymbolHighlights(e.textEditor))
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -172,8 +174,87 @@ function deleteLine_next(textEditor: vscode.TextEditor, edit: vscode.TextEditorE
 	}
 }
 
+async function fold_definitions(textEditor: vscode.TextEditor, foldTypes: boolean)
+{
+	const documentSymbols = await cacheDocumentSymbols(textEditor)
+	if (!documentSymbols?.rootSymbols.length)
+		return
+
+	const toFold: number[] = []
+	function gatherFoldRanges(symbols: vscode.DocumentSymbol[])
+	{
+		for (const symbol of symbols.filter(symbolFilter))
+		{
+			let fold = true
+			switch (symbol.kind)
+			{
+				case vscode.SymbolKind.Class:
+				case vscode.SymbolKind.Enum:
+				case vscode.SymbolKind.Interface:
+				case vscode.SymbolKind.Object:
+				case vscode.SymbolKind.Struct:
+					fold = foldTypes
+					break
+
+				case vscode.SymbolKind.Method:
+				case vscode.SymbolKind.Property:
+				case vscode.SymbolKind.Constructor:
+				case vscode.SymbolKind.Function:
+				case vscode.SymbolKind.Null:
+				case vscode.SymbolKind.Event:
+				case vscode.SymbolKind.Operator:
+					fold = true
+					break
+
+				case vscode.SymbolKind.File:
+				case vscode.SymbolKind.Module:
+				case vscode.SymbolKind.Namespace:
+				case vscode.SymbolKind.Package:
+				case vscode.SymbolKind.Field:
+				case vscode.SymbolKind.Variable:
+				case vscode.SymbolKind.Constant:
+				case vscode.SymbolKind.String:
+				case vscode.SymbolKind.Number:
+				case vscode.SymbolKind.Boolean:
+				case vscode.SymbolKind.Array:
+				case vscode.SymbolKind.Key:
+				case vscode.SymbolKind.EnumMember:
+				case vscode.SymbolKind.TypeParameter:
+					fold = false
+					break
+			}
+
+			fold &&= !symbol.range.isSingleLine;
+
+			if (fold)
+				toFold.push(symbol.range.start.line)
+
+			gatherFoldRanges(symbol.children)
+		}
+	}
+
+	gatherFoldRanges(documentSymbols.rootSymbols)
+
+	const foldingRanges = await vscode.commands.executeCommand<vscode.FoldingRange[]>("vscode.executeFoldingRangeProvider", textEditor.document.uri)
+	for (const foldingRange of foldingRanges)
+	{
+		let fold = false
+		switch (foldingRange.kind)
+		{
+			case vscode.FoldingRangeKind.Comment:
+				fold = (foldingRange.end - foldingRange.start) >= 2
+				break
+		}
+
+		if (fold)
+			toFold.push(foldingRange.start)
+	}
+
+	await vscode.commands.executeCommand("editor.fold", { levels: 1, selectionLines: toFold })
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
-// Text Editor Commands - Symbol Navigation
+// Symbol Cache
 
 const symbolNav: SymbolNavigation = {
 	textEditorSymbols: new Map<vscode.TextEditor, DocumentSymbols>,
@@ -221,6 +302,86 @@ type DocumentSymbols =
 	lastChild:   vscode.DocumentSymbol | undefined
 }
 
+async function cacheDocumentSymbols(textEditor: vscode.TextEditor): Promise<DocumentSymbols | undefined>
+{
+	let documentSymbols = symbolNav.textEditorSymbols.get(textEditor)
+	if (!documentSymbols)
+	{
+		// Use the DocumentSymbol variation so we can efficiently skip entire sections of the tree
+		const rootSymbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+			"vscode.executeDocumentSymbolProvider", textEditor.document.uri)
+
+		if (rootSymbols)
+		{
+			function mapNestedSymbol(maybeNested: vscode.DocumentSymbol, maybeParents: vscode.DocumentSymbol[]): vscode.DocumentSymbol | undefined
+			{
+				for (const maybeParent of maybeParents)
+				{
+					if (maybeNested != maybeParent && maybeParent.range.contains(maybeNested.range))
+					{
+						return mapNestedSymbol(maybeNested, maybeParent.children) ?? maybeParent
+					}
+				}
+				return undefined
+			}
+
+			documentSymbols = { rootSymbols, lastChild: undefined }
+			symbolNav.textEditorSymbols.set(textEditor, documentSymbols)
+
+			const nestedSymbols: vscode.DocumentSymbol[] = []
+			for (const maybeNested of rootSymbols)
+			{
+				const parent = mapNestedSymbol(maybeNested, rootSymbols)
+				if (parent)
+				{
+					parent.children.push(maybeNested)
+					nestedSymbols.push(maybeNested)
+				}
+			}
+			for (const nested of nestedSymbols)
+				rootSymbols.splice(rootSymbols.findIndex(s => s == nested), 1)
+		}
+	}
+	return documentSymbols
+}
+
+function removeDocumentSymbolsForNonVisibleEditors(visibleTextEditors: readonly vscode.TextEditor[])
+{
+	if (!symbolNav)
+		return
+
+	const toRemove: vscode.TextEditor[] = []
+	for (const pair of symbolNav.textEditorSymbols)
+	{
+		const textEditor = pair[0]
+		if (!visibleTextEditors.includes(textEditor))
+			toRemove.push(textEditor)
+	}
+
+	for (const textEditor of toRemove)
+		symbolNav.textEditorSymbols.delete(textEditor)
+}
+
+function removeDocumentSymbols(textDocument: vscode.TextDocument)
+{
+	if (!symbolNav)
+		return
+
+	const toRemove: vscode.TextEditor[] = []
+	for (const pair of symbolNav.textEditorSymbols)
+	{
+		const textEditor = pair[0]
+		if (textEditor.document == textDocument)
+			toRemove.push(textEditor)
+	}
+
+	for (const textEditor of toRemove)
+		symbolNav.textEditorSymbols.delete(textEditor)
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Text Editor Commands - Symbol Navigation
+
 type NearestSymbols =
 {
 	parent?:   vscode.DocumentSymbol
@@ -236,6 +397,18 @@ enum HierarchyDirection
 	Next,
 	Parent,
 	Child,
+}
+
+function removeSymbolHighlights(textEditor: vscode.TextEditor)
+{
+	const documentSymbols = symbolNav.textEditorSymbols.get(textEditor)
+	if (documentSymbols)
+		documentSymbols.lastChild = undefined
+
+	textEditor.setDecorations(symbolNav.highlightBackground, [])
+	textEditor.setDecorations(symbolNav.highlightBorderLR, [])
+	textEditor.setDecorations(symbolNav.highlightBorderT, [])
+	textEditor.setDecorations(symbolNav.highlightBorderB, [])
 }
 
 function symbolFilter(symbol: vscode.DocumentSymbol): boolean
@@ -313,52 +486,6 @@ function selectClosest(symbols: (vscode.DocumentSymbol | undefined)[], position:
 	return closest
 }
 
-function removeNonVisibleTextEditors(visibleTextEditors: readonly vscode.TextEditor[])
-{
-	if (!symbolNav)
-		return
-
-	const toRemove: vscode.TextEditor[] = []
-	for (const pair of symbolNav.textEditorSymbols)
-	{
-		const textEditor = pair[0]
-		if (!visibleTextEditors.includes(textEditor))
-			toRemove.push(textEditor)
-	}
-
-	for (const textEditor of toRemove)
-		symbolNav.textEditorSymbols.delete(textEditor)
-}
-
-function removeDocument(textDocument: vscode.TextDocument)
-{
-	if (!symbolNav)
-		return
-
-	const toRemove: vscode.TextEditor[] = []
-	for (const pair of symbolNav.textEditorSymbols)
-	{
-		const textEditor = pair[0]
-		if (textEditor.document == textDocument)
-			toRemove.push(textEditor)
-	}
-
-	for (const textEditor of toRemove)
-		symbolNav.textEditorSymbols.delete(textEditor)
-}
-
-function clearSymbolHighlights(textEditor: vscode.TextEditor)
-{
-	const documentSymbols = symbolNav.textEditorSymbols.get(textEditor)
-	if (documentSymbols)
-		documentSymbols.lastChild = undefined
-
-	textEditor.setDecorations(symbolNav.highlightBackground, [])
-	textEditor.setDecorations(symbolNav.highlightBorderLR, [])
-	textEditor.setDecorations(symbolNav.highlightBorderT, [])
-	textEditor.setDecorations(symbolNav.highlightBorderB, [])
-}
-
 async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: HierarchyDirection, select: boolean)
 {
 	// NOTE: This function makes several assumptions:
@@ -374,45 +501,7 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 	// NOTE: Measured 0.4 ms to navigate in a file with 1006 symbols
 	// NOTE: Measured 5.0 ms to gather symbols in a file with 1006 symbols
 
-	let documentSymbols = symbolNav.textEditorSymbols.get(textEditor)
-	if (!documentSymbols)
-	{
-		// Use the DocumentSymbol variation so we can efficiently skip entire sections of the tree
-		const rootSymbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
-			"vscode.executeDocumentSymbolProvider", textEditor.document.uri)
-
-		if (rootSymbols)
-		{
-			function mapNestedSymbol(maybeNested: vscode.DocumentSymbol, maybeParents: vscode.DocumentSymbol[]): vscode.DocumentSymbol | undefined
-			{
-				for (const maybeParent of maybeParents)
-				{
-					if (maybeNested != maybeParent && maybeParent.range.contains(maybeNested.range))
-					{
-						return mapNestedSymbol(maybeNested, maybeParent.children) ?? maybeParent
-					}
-				}
-				return undefined
-			}
-
-			documentSymbols = { rootSymbols, lastChild: undefined }
-			symbolNav.textEditorSymbols.set(textEditor, documentSymbols)
-
-			const nestedSymbols: vscode.DocumentSymbol[] = []
-			for (const maybeNested of rootSymbols)
-			{
-				const parent = mapNestedSymbol(maybeNested, rootSymbols)
-				if (parent)
-				{
-					parent.children.push(maybeNested)
-					nestedSymbols.push(maybeNested)
-				}
-			}
-			for (const nested of nestedSymbols)
-				rootSymbols.splice(rootSymbols.findIndex(s => s == nested), 1)
-		}
-	}
-
+	const documentSymbols = await cacheDocumentSymbols(textEditor)
 	if (!documentSymbols?.rootSymbols.length)
 		return
 
