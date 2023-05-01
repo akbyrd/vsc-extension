@@ -27,9 +27,9 @@ export function activate(context: vscode.ExtensionContext)
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.fold.functions",                       t => fold_definitions(t, false)),
 	)
 
+	vscode.workspace.onDidCloseTextDocument(removeDocumentSymbols)
 	vscode.workspace.onDidChangeTextDocument(e => removeDocumentSymbols(e.document))
-	vscode.window.onDidChangeVisibleTextEditors(removeDocumentSymbolsForNonVisibleEditors)
-	vscode.window.onDidChangeTextEditorSelection(e => removeSymbolHighlights(e.textEditor))
+	vscode.window.onDidChangeTextEditorSelection(e => updateSymbolHighlights(e.textEditor))
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -257,7 +257,7 @@ async function fold_definitions(textEditor: vscode.TextEditor, foldTypes: boolea
 // Symbol Cache
 
 const symbolNav: SymbolNavigation = {
-	textEditorSymbols: new Map<vscode.TextEditor, DocumentSymbols>,
+	textDocumentSymbols: new Map<vscode.TextDocument, DocumentSymbols>,
 
 	highlightBackground: vscode.window.createTextEditorDecorationType({
 		isWholeLine: true,
@@ -288,7 +288,7 @@ const symbolNav: SymbolNavigation = {
 
 type SymbolNavigation =
 {
-	textEditorSymbols:   Map<vscode.TextEditor, DocumentSymbols>
+	textDocumentSymbols: Map<vscode.TextDocument, DocumentSymbols>
 	highlightBackground: vscode.TextEditorDecorationType
 	highlightBorderLR:   vscode.TextEditorDecorationType
 	highlightBorderT:    vscode.TextEditorDecorationType
@@ -298,13 +298,15 @@ type SymbolNavigation =
 
 type DocumentSymbols =
 {
-	rootSymbols: vscode.DocumentSymbol[]
-	lastChild:   vscode.DocumentSymbol | undefined
+	rootSymbols:     vscode.DocumentSymbol[]
+	highlightRanges: vscode.Range[]
+	lastChild:       vscode.DocumentSymbol | undefined
+	lastSelections:  readonly vscode.Selection[]
 }
 
 async function cacheDocumentSymbols(textEditor: vscode.TextEditor): Promise<DocumentSymbols | undefined>
 {
-	let documentSymbols = symbolNav.textEditorSymbols.get(textEditor)
+	let documentSymbols = symbolNav.textDocumentSymbols.get(textEditor.document)
 	if (!documentSymbols)
 	{
 		// Use the DocumentSymbol variation so we can efficiently skip entire sections of the tree
@@ -325,8 +327,8 @@ async function cacheDocumentSymbols(textEditor: vscode.TextEditor): Promise<Docu
 				return undefined
 			}
 
-			documentSymbols = { rootSymbols, lastChild: undefined }
-			symbolNav.textEditorSymbols.set(textEditor, documentSymbols)
+			documentSymbols = { rootSymbols, highlightRanges: [], lastChild: undefined, lastSelections: textEditor.selections }
+			symbolNav.textDocumentSymbols.set(textEditor.document, documentSymbols)
 			symbolNav.statusBarMessage?.dispose()
 
 			const nestedSymbols: vscode.DocumentSymbol[] = []
@@ -348,41 +350,22 @@ async function cacheDocumentSymbols(textEditor: vscode.TextEditor): Promise<Docu
 			symbolNav.statusBarMessage = vscode.window.setStatusBarMessage("No symbols found in this file", 3000)
 		}
 	}
+
 	return documentSymbols
-}
-
-function removeDocumentSymbolsForNonVisibleEditors(visibleTextEditors: readonly vscode.TextEditor[])
-{
-	if (!symbolNav)
-		return
-
-	const toRemove: vscode.TextEditor[] = []
-	for (const pair of symbolNav.textEditorSymbols)
-	{
-		const textEditor = pair[0]
-		if (!visibleTextEditors.includes(textEditor))
-			toRemove.push(textEditor)
-	}
-
-	for (const textEditor of toRemove)
-		symbolNav.textEditorSymbols.delete(textEditor)
 }
 
 function removeDocumentSymbols(textDocument: vscode.TextDocument)
 {
-	if (!symbolNav)
-		return
-
-	const toRemove: vscode.TextEditor[] = []
-	for (const pair of symbolNav.textEditorSymbols)
+	const toRemove: vscode.TextDocument[] = []
+	for (const pair of symbolNav.textDocumentSymbols)
 	{
-		const textEditor = pair[0]
-		if (textEditor.document == textDocument)
-			toRemove.push(textEditor)
+		const cachedTextDocument = pair[0]
+		if (cachedTextDocument == textDocument)
+			toRemove.push(cachedTextDocument)
 	}
 
-	for (const textEditor of toRemove)
-		symbolNav.textEditorSymbols.delete(textEditor)
+	for (const textDocument of toRemove)
+		symbolNav.textDocumentSymbols.delete(textDocument)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -405,16 +388,30 @@ enum HierarchyDirection
 	Child,
 }
 
-function removeSymbolHighlights(textEditor: vscode.TextEditor)
+function updateSymbolHighlights(textEditor: vscode.TextEditor)
 {
-	const documentSymbols = symbolNav.textEditorSymbols.get(textEditor)
-	if (documentSymbols)
-		documentSymbols.lastChild = undefined
+	const documentSymbols = symbolNav.textDocumentSymbols.get(textEditor.document)
 
-	textEditor.setDecorations(symbolNav.highlightBackground, [])
-	textEditor.setDecorations(symbolNav.highlightBorderLR, [])
-	textEditor.setDecorations(symbolNav.highlightBorderT, [])
-	textEditor.setDecorations(symbolNav.highlightBorderB, [])
+	// HACK: This is a workaround for https://github.com/microsoft/vscode/issues/181233
+	let isSelectionSame = true
+	isSelectionSame &&= documentSymbols != undefined
+	isSelectionSame &&= textEditor.selections.length == documentSymbols!.lastSelections.length
+	isSelectionSame &&= textEditor.selections.every((selection, i) => selection.isEqual(documentSymbols!.lastSelections[i]))
+
+	if (isSelectionSame)
+	{
+		textEditor.setDecorations(symbolNav.highlightBackground, documentSymbols!.highlightRanges)
+		textEditor.setDecorations(symbolNav.highlightBorderLR, documentSymbols!.highlightRanges)
+		textEditor.setDecorations(symbolNav.highlightBorderT, documentSymbols!.highlightRanges.map(r => new vscode.Range(r.start, r.start)))
+		textEditor.setDecorations(symbolNav.highlightBorderB, documentSymbols!.highlightRanges.map(r => new vscode.Range(r.end, r.end)))
+	}
+	else
+	{
+		textEditor.setDecorations(symbolNav.highlightBackground, [])
+		textEditor.setDecorations(symbolNav.highlightBorderLR, [])
+		textEditor.setDecorations(symbolNav.highlightBorderT, [])
+		textEditor.setDecorations(symbolNav.highlightBorderB, [])
+	}
 }
 
 function symbolFilter(symbol: vscode.DocumentSymbol): boolean
@@ -511,7 +508,7 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 	if (!documentSymbols?.rootSymbols.length)
 		return
 
-	const symbolRanges: vscode.Range[] = []
+	documentSymbols.highlightRanges.length = 0
 	const newSelections: vscode.Selection[] = []
 	for (const selection of textEditor.selections)
 	{
@@ -571,7 +568,7 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 			if (direction == HierarchyDirection.Parent)
 				documentSymbols.lastChild = nearest.current ?? selectClosest([nearest.previous, nearest.next], selection.active)
 
-			symbolRanges.push(newSymbol.range)
+			documentSymbols.highlightRanges.push(newSymbol.range)
 			const symbolSelection = select
 				? new vscode.Selection(newSymbol.range.start, newSymbol.range.end)
 				: new vscode.Selection(newSymbol.range.start, newSymbol.range.start)
@@ -580,25 +577,26 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 		else
 		{
 			if (nearest.current)
-				symbolRanges.push(nearest.current.range)
+			documentSymbols.highlightRanges.push(nearest.current.range)
 			newSelections.push(selection)
 		}
 	}
 
 	textEditor.selections = newSelections
+	documentSymbols.lastSelections = newSelections
 
-	if (symbolRanges.length)
+	if (documentSymbols.highlightRanges.length)
 	{
-		textEditor.revealRange(symbolRanges[0], vscode.TextEditorRevealType.InCenter)
+		textEditor.revealRange(documentSymbols.highlightRanges[0], vscode.TextEditorRevealType.InCenter)
 
 		if (!select)
 		{
 			// HACK: This is a workaround for https://github.com/microsoft/vscode/issues/106209
 			await sleep(4)
-			textEditor.setDecorations(symbolNav.highlightBackground, symbolRanges)
-			textEditor.setDecorations(symbolNav.highlightBorderLR, symbolRanges)
-			textEditor.setDecorations(symbolNav.highlightBorderT, symbolRanges.map(r => new vscode.Range(r.start, r.start)))
-			textEditor.setDecorations(symbolNav.highlightBorderB, symbolRanges.map(r => new vscode.Range(r.end, r.end)))
+			textEditor.setDecorations(symbolNav.highlightBackground, documentSymbols.highlightRanges)
+			textEditor.setDecorations(symbolNav.highlightBorderLR, documentSymbols.highlightRanges)
+			textEditor.setDecorations(symbolNav.highlightBorderT, documentSymbols.highlightRanges.map(r => new vscode.Range(r.start, r.start)))
+			textEditor.setDecorations(symbolNav.highlightBorderB, documentSymbols.highlightRanges.map(r => new vscode.Range(r.end, r.end)))
 		}
 	}
 }
