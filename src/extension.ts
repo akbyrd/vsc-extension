@@ -300,8 +300,8 @@ type DocumentSymbols =
 {
 	rootSymbols:     vscode.DocumentSymbol[]
 	highlightRanges: vscode.Range[]
-	lastChild:       vscode.DocumentSymbol | undefined
-	lastSelections:  readonly vscode.Selection[]
+	lastChild?:      vscode.DocumentSymbol
+	lastSelections?: readonly vscode.Selection[]
 }
 
 async function cacheDocumentSymbols(textEditor: vscode.TextEditor): Promise<DocumentSymbols | undefined>
@@ -395,8 +395,8 @@ function updateSymbolHighlights(textEditor: vscode.TextEditor)
 	// HACK: This is a workaround for https://github.com/microsoft/vscode/issues/181233
 	let isSelectionSame = true
 	isSelectionSame &&= documentSymbols != undefined
-	isSelectionSame &&= textEditor.selections.length == documentSymbols!.lastSelections.length
-	isSelectionSame &&= textEditor.selections.every((selection, i) => selection.isEqual(documentSymbols!.lastSelections[i]))
+	isSelectionSame &&= textEditor.selections.length == documentSymbols!.lastSelections?.length
+	isSelectionSame &&= textEditor.selections.every((selection, i) => selection.isEqual(documentSymbols!.lastSelections![i]))
 
 	if (isSelectionSame)
 	{
@@ -407,6 +407,13 @@ function updateSymbolHighlights(textEditor: vscode.TextEditor)
 	}
 	else
 	{
+		if (documentSymbols)
+		{
+			documentSymbols.highlightRanges.length = 0
+			documentSymbols.lastChild              = undefined
+			documentSymbols.lastSelections         = undefined
+		}
+
 		textEditor.setDecorations(symbolNav.highlightBackground, [])
 		textEditor.setDecorations(symbolNav.highlightBorderLR, [])
 		textEditor.setDecorations(symbolNav.highlightBorderT, [])
@@ -451,44 +458,6 @@ function findParentAndCurrent(symbols: vscode.DocumentSymbol[], position: vscode
 	}
 }
 
-function selectClosest(symbols: (vscode.DocumentSymbol | undefined)[], position: vscode.Position): vscode.DocumentSymbol | undefined
-{
-	let closest: vscode.DocumentSymbol | undefined
-
-	for (const symbol of symbols)
-	{
-		if (!symbol)
-			continue
-
-		if (!closest)
-		{
-			closest = symbol
-			continue
-		}
-
-		const lineDistAStart = Math.abs(position.line - symbol.range.start.line)
-		const lineDistAEnd   = Math.abs(position.line - symbol.range.end.line)
-		const lineDistA = Math.min(lineDistAStart, lineDistAEnd)
-
-		const lineDistBStart = Math.abs(position.line - closest.range.start.line)
-		const lineDistBEnd   = Math.abs(position.line - closest.range.end.line)
-		const lineDistB = Math.min(lineDistBStart, lineDistBEnd)
-
-		const charDistAStart = Math.abs(position.character - symbol.range.start.character)
-		const charDistAEnd   = Math.abs(position.character - symbol.range.end.character)
-		const charDistA = Math.min(charDistAStart, charDistAEnd)
-
-		const charDistBStart = Math.abs(position.character - closest.range.start.character)
-		const charDistBEnd   = Math.abs(position.character - closest.range.end.character)
-		const charDistB = Math.min(charDistBStart, charDistBEnd)
-
-		const aIsCloser = lineDistA < lineDistB || (lineDistA == lineDistB && charDistA < charDistB)
-		closest = aIsCloser ? symbol : closest
-	}
-
-	return closest
-}
-
 async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: HierarchyDirection, select: boolean)
 {
 	// NOTE: This function makes several assumptions:
@@ -518,7 +487,7 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 		const nearest: NearestSymbols = {}
 		findParentAndCurrent(rootSymbols, position, nearest)
 
-		const children = (nearest.current ?? nearest.parent)?.children ?? []
+		const children = nearest.current?.children ?? []
 		for (const child of children.filter(symbolFilter))
 		{
 			const isBeforeChild = !nearest.child || child.range.start.isBefore(nearest.child.range.start)
@@ -566,7 +535,7 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 		{
 			documentSymbols.lastChild = undefined
 			if (direction == HierarchyDirection.Parent)
-				documentSymbols.lastChild = nearest.current ?? selectClosest([nearest.previous, nearest.next], selection.active)
+				documentSymbols.lastChild = nearest.current ?? nearest.next ?? nearest.previous
 
 			documentSymbols.highlightRanges.push(newSymbol.range)
 			const symbolSelection = select
@@ -577,7 +546,7 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 		else
 		{
 			if (nearest.current)
-			documentSymbols.highlightRanges.push(nearest.current.range)
+				documentSymbols.highlightRanges.push(nearest.current.range)
 			newSelections.push(selection)
 		}
 	}
