@@ -34,13 +34,6 @@ export function activate(context: vscode.ExtensionContext)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// Utilities
-
-function sleep(ms: number) {
-	return new Promise(resolve => setTimeout(resolve, ms))
-}
-
-// ---------------------------------------------------------------------------------------------------------------------
 // Plain Commands
 
 let taskArgs: object | undefined
@@ -483,6 +476,7 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 		return
 
 	documentSymbols.highlightRanges.length = 0
+
 	const newSelections: vscode.Selection[] = []
 	for (const selection of textEditor.selections)
 	{
@@ -516,37 +510,41 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 				nearest.next = sibling
 		}
 
-		let newSymbol
+		let newSymbol: vscode.DocumentSymbol | undefined
 		switch (direction)
 		{
 			case HierarchyDirection.Prev:
 				newSymbol = nearest.previous
+				documentSymbols.lastChild = undefined
 				break
 
 			case HierarchyDirection.Next:
 				newSymbol = nearest.next
+				documentSymbols.lastChild = undefined
 				break
 
 			case HierarchyDirection.Parent:
 				newSymbol = nearest.parent
+				documentSymbols.lastChild = nearest.current ?? nearest.next ?? nearest.previous
 				break
 
 			case HierarchyDirection.Child:
 				newSymbol = documentSymbols.lastChild ?? nearest.child
+				documentSymbols.lastChild = undefined
 				break
 		}
 
 		if (newSymbol)
 		{
-			documentSymbols.lastChild = undefined
-			if (direction == HierarchyDirection.Parent)
-				documentSymbols.lastChild = nearest.current ?? nearest.next ?? nearest.previous
-
-			documentSymbols.highlightRanges.push(newSymbol.range)
-			const symbolSelection = select
-				? new vscode.Selection(newSymbol.range.start, newSymbol.range.end)
-				: new vscode.Selection(newSymbol.range.start, newSymbol.range.start)
-			newSelections.push(symbolSelection)
+			if (select)
+			{
+				newSelections.push(new vscode.Selection(newSymbol.range.start, newSymbol.range.end))
+			}
+			else
+			{
+				documentSymbols.highlightRanges.push(newSymbol.range)
+				newSelections.push(new vscode.Selection(newSymbol.range.start, newSymbol.range.start))
+			}
 		}
 		else
 		{
@@ -560,17 +558,5 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 	documentSymbols.lastSelections = newSelections
 
 	if (documentSymbols.highlightRanges.length)
-	{
 		textEditor.revealRange(documentSymbols.highlightRanges[0], vscode.TextEditorRevealType.InCenter)
-
-		if (!select)
-		{
-			// HACK: This is a workaround for https://github.com/microsoft/vscode/issues/106209
-			await sleep(4)
-			textEditor.setDecorations(symbolNav.highlightBackground, documentSymbols.highlightRanges)
-			textEditor.setDecorations(symbolNav.highlightBorderLR, documentSymbols.highlightRanges)
-			textEditor.setDecorations(symbolNav.highlightBorderT, documentSymbols.highlightRanges.map(r => new vscode.Range(r.start, r.start)))
-			textEditor.setDecorations(symbolNav.highlightBorderB, documentSymbols.highlightRanges.map(r => new vscode.Range(r.end, r.end)))
-		}
-	}
 }
