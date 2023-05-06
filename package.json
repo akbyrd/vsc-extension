@@ -105,12 +105,16 @@
         "title": "Delete Line Below Cursor"
       },
       {
+        "command": "akbyrd.editor.fold.functions",
+        "title": "Fold All Functions"
+      },
+      {
         "command": "akbyrd.editor.fold.definitions",
         "title": "Fold All Definitions"
       },
       {
-        "command": "akbyrd.editor.fold.functions",
-        "title": "Fold All Functions"
+        "command": "akbyrd.editor.fold.definitions.exceptSelected",
+        "title": "Fold All Definitions Except Selected"
       }
     ],
     "menus": {
@@ -168,11 +172,15 @@
           "when": "activeEditor"
         },
         {
+          "command": "akbyrd.editor.fold.functions",
+          "when": "activeEditor"
+        },
+        {
           "command": "akbyrd.editor.fold.definitions",
           "when": "activeEditor"
         },
         {
-          "command": "akbyrd.editor.fold.functions",
+          "command": "akbyrd.editor.fold.definitions.exceptSelected",
           "when": "activeEditor"
         }
       ]

@@ -23,8 +23,9 @@ export function activate(context: vscode.ExtensionContext)
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteChunk.next",                     t => deleteChunk(t, Direction.Next)),
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteLine.prev",                      deleteLine_prev),
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteLine.next",                      deleteLine_next),
-		vscode.commands.registerTextEditorCommand("akbyrd.editor.fold.definitions",                     t => fold_definitions(t, true)),
-		vscode.commands.registerTextEditorCommand("akbyrd.editor.fold.functions",                       t => fold_definitions(t, false)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.fold.functions",                       t => fold_definitions(t, false, true)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.fold.definitions",                     t => fold_definitions(t, true, true)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.fold.definitions.exceptSelected",      t => fold_definitions(t, true, false)),
 	)
 
 	vscode.workspace.onDidCloseTextDocument(removeDocumentSymbols)
@@ -174,7 +175,7 @@ function deleteLine_next(textEditor: vscode.TextEditor, edit: vscode.TextEditorE
 	}
 }
 
-async function fold_definitions(textEditor: vscode.TextEditor, foldTypes: boolean)
+async function fold_definitions(textEditor: vscode.TextEditor, foldTypes: boolean, foldCurrent: boolean)
 {
 	const documentSymbols = await cacheDocumentSymbols(textEditor)
 	if (!documentSymbols?.rootSymbols.length)
@@ -225,6 +226,7 @@ async function fold_definitions(textEditor: vscode.TextEditor, foldTypes: boolea
 			}
 
 			fold &&= !symbol.range.isSingleLine;
+			fold &&= foldCurrent || !textEditor.selections.some(selection => symbol.range.intersection(selection));
 
 			if (fold)
 				toFold.push(symbol.range.start.line)
@@ -245,6 +247,9 @@ async function fold_definitions(textEditor: vscode.TextEditor, foldTypes: boolea
 				fold = (foldingRange.end - foldingRange.start) >= 2
 				break
 		}
+
+		const range = new vscode.Range(foldingRange.start, 0, foldingRange.end - 1, Infinity)
+		fold &&= foldCurrent || !textEditor.selections.some(selection => range.intersection(selection));
 
 		if (fold)
 			toFold.push(foldingRange.start)
