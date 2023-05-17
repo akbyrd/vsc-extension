@@ -170,11 +170,14 @@ function deleteLine_next(textEditor: vscode.TextEditor, edit: vscode.TextEditorE
 
 async function fold_definitions(textEditor: vscode.TextEditor, foldTypes: boolean, foldCurrent: boolean)
 {
+	// NOTE: Multiple folding ranges can end on the same line.
+	// NOTE: I assume multiple folding ranges cannot start on the same line.
+
 	const documentSymbols = await cacheDocumentSymbols(textEditor)
 	if (!documentSymbols?.rootSymbols.length)
 		return
 
-	const toFold: number[] = []
+	const symbolsToFold: vscode.DocumentSymbol[] = []
 	function gatherFoldRanges(symbols: vscode.DocumentSymbol[])
 	{
 		for (const symbol of symbols.filter(symbolFilter))
@@ -221,8 +224,9 @@ async function fold_definitions(textEditor: vscode.TextEditor, foldTypes: boolea
 			fold &&= !symbol.range.isSingleLine;
 			fold &&= foldCurrent || !textEditor.selections.some(selection => symbol.range.intersection(selection));
 
+			// NOTE: Use range.end because templates and functions can span multiple lines before the foldable range
 			if (fold)
-				toFold.push(symbol.range.start.line)
+				symbolsToFold.push(symbol)
 
 			gatherFoldRanges(symbol.children)
 		}
@@ -230,7 +234,21 @@ async function fold_definitions(textEditor: vscode.TextEditor, foldTypes: boolea
 
 	gatherFoldRanges(documentSymbols.rootSymbols)
 
+	const toFold: number[] = []
 	const foldingRanges = await vscode.commands.executeCommand<vscode.FoldingRange[]>("vscode.executeFoldingRangeProvider", textEditor.document.uri)
+
+	// HACK: Skip folding for any symbols that don't have a corresponding folding range. This happens when a symbol is
+	// inside a disabled processor block in C++. https://github.com/microsoft/vscode-cpptools/issues/10963
+	for (const symbol of symbolsToFold)
+	{
+		for (const foldingRange of foldingRanges)
+		{
+			const range = new vscode.Range(foldingRange.start, Infinity, foldingRange.end, 0)
+			if (symbol.range.contains(range))
+				toFold.push(foldingRange.start)
+		}
+	}
+
 	for (const foldingRange of foldingRanges)
 	{
 		let fold = false
