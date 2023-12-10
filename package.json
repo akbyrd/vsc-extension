@@ -191,7 +191,7 @@
         "owner": "akbyrd-msbuild",
         "label": "build",
         "fileLocation": "autoDetect",
-        "source": " ",
+        "source": "cpp",
         "pattern": {
           "regexp": "^(?:.*?>)?(.*?)\\(([\\d,]*)\\): (.*?) (\\S*?): (.*?)(?: \\[.*?\\])?$",
           "kind": "location",
