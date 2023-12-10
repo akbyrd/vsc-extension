@@ -38,15 +38,9 @@ export function activate(context: vscode.ExtensionContext)
 
 let taskArgs: object | undefined
 
-type RunTaskArgs =
-{
-	task: string
-	type: string
-}
-
 type TaskWithArgs =
 {
-	task: RunTaskArgs | string
+	task: string
 	taskArgs: object
 }
 
@@ -554,15 +548,12 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 
 		if (newSymbol)
 		{
-			if (select)
-			{
-				newSelections.push(new vscode.Selection(newSymbol.range.start, newSymbol.range.end))
-			}
-			else
-			{
-				documentSymbols.highlightRanges.push(newSymbol.range)
-				newSelections.push(new vscode.Selection(newSymbol.range.start, newSymbol.range.start))
-			}
+			const newSelection = select
+				? new vscode.Selection(newSymbol.range.end, newSymbol.range.start)
+				: new vscode.Selection(newSymbol.range.start, newSymbol.range.start)
+
+			documentSymbols.highlightRanges.push(newSymbol.range)
+			newSelections.push(newSelection)
 		}
 		else
 		{
@@ -572,9 +563,7 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 		}
 	}
 
-	textEditor.selections = newSelections
 	documentSymbols.lastSelections = newSelections
-
-	if (documentSymbols.highlightRanges.length)
-		textEditor.revealRange(documentSymbols.highlightRanges[0], vscode.TextEditorRevealType.InCenter)
+	textEditor.selections = newSelections
+	textEditor.revealRange(newSelections[0], vscode.TextEditorRevealType.InCenter)
 }
