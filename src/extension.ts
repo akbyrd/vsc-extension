@@ -167,6 +167,9 @@ async function fold_definitions(textEditor: vscode.TextEditor, foldTypes: boolea
 	// NOTE: Multiple folding ranges can end on the same line.
 	// NOTE: I assume multiple folding ranges cannot start on the same line.
 
+	const isMarkdown = textEditor.document.languageId == 'markdown'
+	const foldStrings = isMarkdown
+
 	const documentSymbols = await cacheDocumentSymbols(textEditor)
 	if (!documentSymbols?.rootSymbols.length)
 		return
@@ -197,6 +200,10 @@ async function fold_definitions(textEditor: vscode.TextEditor, foldTypes: boolea
 					fold = true
 					break
 
+				case vscode.SymbolKind.String:
+					fold = foldStrings
+					break
+
 				case vscode.SymbolKind.File:
 				case vscode.SymbolKind.Module:
 				case vscode.SymbolKind.Namespace:
@@ -204,7 +211,6 @@ async function fold_definitions(textEditor: vscode.TextEditor, foldTypes: boolea
 				case vscode.SymbolKind.Field:
 				case vscode.SymbolKind.Variable:
 				case vscode.SymbolKind.Constant:
-				case vscode.SymbolKind.String:
 				case vscode.SymbolKind.Number:
 				case vscode.SymbolKind.Boolean:
 				case vscode.SymbolKind.Array:
@@ -215,8 +221,8 @@ async function fold_definitions(textEditor: vscode.TextEditor, foldTypes: boolea
 					break
 			}
 
-			fold &&= !symbol.range.isSingleLine;
-			fold &&= foldCurrent || !textEditor.selections.some(selection => symbol.range.intersection(selection));
+			fold &&= !symbol.range.isSingleLine
+			fold &&= foldCurrent || !textEditor.selections.some(selection => symbol.range.intersection(selection))
 
 			// NOTE: Use range.end because templates and functions can span multiple lines before the foldable range
 			if (fold)
@@ -254,7 +260,7 @@ async function fold_definitions(textEditor: vscode.TextEditor, foldTypes: boolea
 		}
 
 		const range = new vscode.Range(foldingRange.start, 0, foldingRange.end - 1, Infinity)
-		fold &&= foldCurrent || !textEditor.selections.some(selection => range.intersection(selection));
+		fold &&= foldCurrent || !textEditor.selections.some(selection => range.intersection(selection))
 
 		if (fold)
 			toFold.push(foldingRange.start)
@@ -310,7 +316,7 @@ type DocumentSymbols =
 {
 	rootSymbols:     vscode.DocumentSymbol[]
 	highlightRanges: vscode.Range[]
-	lastChild?:      vscode.DocumentSymbol
+	lastChildren:    vscode.DocumentSymbol[]
 	lastSelections?: readonly vscode.Selection[]
 }
 
@@ -337,7 +343,7 @@ async function cacheDocumentSymbols(textEditor: vscode.TextEditor): Promise<Docu
 				return undefined
 			}
 
-			documentSymbols = { rootSymbols, highlightRanges: [], lastChild: undefined, lastSelections: textEditor.selections }
+			documentSymbols = { rootSymbols, highlightRanges: [], lastChildren: [], lastSelections: textEditor.selections }
 			symbolNav.textDocumentSymbols.set(textEditor.document, documentSymbols)
 			symbolNav.statusBarMessage?.dispose()
 
@@ -420,8 +426,8 @@ function updateSymbolHighlights(textEditor: vscode.TextEditor)
 		if (documentSymbols)
 		{
 			documentSymbols.highlightRanges.length = 0
-			documentSymbols.lastChild              = undefined
-			documentSymbols.lastSelections         = undefined
+			documentSymbols.lastChildren.length = 0
+			documentSymbols.lastSelections = undefined
 		}
 
 		textEditor.setDecorations(symbolNav.highlightBackground, [])
@@ -483,6 +489,8 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 	// NOTE: Measured 0.4 ms to navigate in a file with 1006 symbols
 	// NOTE: Measured 5.0 ms to gather symbols in a file with 1006 symbols
 
+	// BUG: Statements include semicolon, structs do not
+
 	const documentSymbols = await cacheDocumentSymbols(textEditor)
 	if (!documentSymbols?.rootSymbols.length)
 		return
@@ -527,25 +535,27 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 		{
 			case HierarchyDirection.Prev:
 				newSymbol = nearest.previous
-				documentSymbols.lastChild = undefined
+				documentSymbols.lastChildren.length = 0
 				break
 
 			case HierarchyDirection.Next:
 				newSymbol = nearest.next
-				documentSymbols.lastChild = undefined
+				documentSymbols.lastChildren.length = 0
 				break
 
 			case HierarchyDirection.Parent:
 				newSymbol = nearest.parent
-				documentSymbols.lastChild = nearest.current ?? nearest.next ?? nearest.previous
+				const lastChild = nearest.current ?? nearest.next ?? nearest.previous
+				if (nearest.parent && lastChild)
+					documentSymbols.lastChildren.push(lastChild)
 				break
 
 			case HierarchyDirection.Child:
-				newSymbol = documentSymbols.lastChild ?? nearest.child
-				documentSymbols.lastChild = undefined
+				newSymbol = documentSymbols.lastChildren.pop() ?? nearest.child
 				break
 		}
 
+		newSymbol = newSymbol ?? nearest.current
 		if (newSymbol)
 		{
 			const newSelection = select
@@ -557,8 +567,6 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 		}
 		else
 		{
-			if (nearest.current)
-				documentSymbols.highlightRanges.push(nearest.current.range)
 			newSelections.push(selection)
 		}
 	}
@@ -566,4 +574,11 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 	documentSymbols.lastSelections = newSelections
 	textEditor.selections = newSelections
 	textEditor.revealRange(newSelections[0], vscode.TextEditorRevealType.InCenter)
+
+	// NOTE: It's possible for selection to not actually change, but want still want to trigger
+	// highlighting. This happens when navigating to the previous symbol while at the beginning of
+	// the first symbol already, for example. Since our event is tied to a selection change event and
+	// the event won't trigger and we need to apply the highlighting directly. Highlights always
+	// overwrite previous instances so applying twice isn't an issue.
+	updateSymbolHighlights(textEditor)
 }
