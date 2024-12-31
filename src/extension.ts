@@ -200,6 +200,10 @@ async function fold_definitions(textEditor: vscode.TextEditor, foldTypes: boolea
 					fold = true
 					break
 
+				case vscode.SymbolKind.Variable:
+					fold = symbol.range.end.line - symbol.range.start.line > 3
+					break
+
 				case vscode.SymbolKind.String:
 					fold = foldStrings
 					break
@@ -209,7 +213,6 @@ async function fold_definitions(textEditor: vscode.TextEditor, foldTypes: boolea
 				case vscode.SymbolKind.Namespace:
 				case vscode.SymbolKind.Package:
 				case vscode.SymbolKind.Field:
-				case vscode.SymbolKind.Variable:
 				case vscode.SymbolKind.Constant:
 				case vscode.SymbolKind.Number:
 				case vscode.SymbolKind.Boolean:
