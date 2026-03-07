@@ -19,6 +19,8 @@ export function activate(context: vscode.ExtensionContext)
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.symbol.next",           t => cursorMoveTo_symbol(t, HierarchyDirection.Next, true)),
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.symbol.prnt",           t => cursorMoveTo_symbol(t, HierarchyDirection.Parent, true)),
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.symbol.chld",           t => cursorMoveTo_symbol(t, HierarchyDirection.Child, true)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteSymbol.prev",                    t => deleteSymbol(t, Direction.Prev)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteSymbol.next",                    t => deleteSymbol(t, Direction.Next)),
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteChunk.prev",                     t => deleteChunk(t, Direction.Prev)),
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteChunk.next",                     t => deleteChunk(t, Direction.Next)),
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteLine.prev",                      deleteLine_prev),
@@ -95,6 +97,32 @@ async function cursorMoveTo_blankLine_center(textEditor: vscode.TextEditor, dire
 	scrollTo_cursor(textEditor)
 }
 
+function deleteSymbol(textEditor: vscode.TextEditor, direction: Direction)
+{
+	switch (direction)
+	{
+		case Direction.Prev:
+		{
+			cursorMoveTo_symbol(textEditor, HierarchyDirection.Prev, true)
+			vscode.commands.executeCommand("deleteLeft")
+			break
+		}
+
+		case Direction.Next:
+		{
+			//await vscode.commands.executeCommand("deleteRight")
+			console.log("begin")
+			cursorMoveTo_symbol(textEditor, HierarchyDirection.Next, true)
+			textEditor.edit((editBuilder: vscode.TextEditorEdit) => {
+				for (const selection of textEditor.selections)
+					editBuilder.delete(selection)
+				console.log("\tend")
+			})
+			break
+		}
+	}
+}
+
 async function deleteChunk(textEditor: vscode.TextEditor, direction: Direction)
 {
 	switch (direction)
@@ -162,114 +190,149 @@ function deleteLine_next(textEditor: vscode.TextEditor, edit: vscode.TextEditorE
 	}
 }
 
+// TODO: Add command for fold recurse
+// TODO: Folding different comments together
+
 async function fold_definitions(textEditor: vscode.TextEditor, foldTypes: boolean, foldCurrent: boolean)
 {
 	// NOTE: Multiple folding ranges can end on the same line.
 	// NOTE: I assume multiple folding ranges cannot start on the same line.
 
 	const isMarkdown = textEditor.document.languageId == 'markdown'
-	const foldStrings = isMarkdown
+	//const foldStrings = isMarkdown
 
 	const documentSymbols = await cacheDocumentSymbols(textEditor)
 	if (!documentSymbols?.rootSymbols.length)
+	{
+		if (foldCurrent)
+			await vscode.commands.executeCommand("editor.foldAll")
+		else
+			await vscode.commands.executeCommand("editor.foldAllExcept")
 		return
+	}
 
-	const symbolsToFold: vscode.DocumentSymbol[] = []
-	function gatherFoldRanges(symbols: vscode.DocumentSymbol[])
+	function gatherSymbolsToFold(symbols: vscode.DocumentSymbol[], toFold: SymbolToFold[])
 	{
 		for (const symbol of symbols.filter(symbolFilter))
 		{
-			let fold = true
-			switch (symbol.kind)
+			const range = symbol.range
+			if (!range.isSingleLine)
 			{
-				case vscode.SymbolKind.Class:
-				case vscode.SymbolKind.Enum:
-				case vscode.SymbolKind.Interface:
-				case vscode.SymbolKind.Object:
-				case vscode.SymbolKind.Struct:
-					fold = foldTypes
-					break
+				let fold = false
+				switch (symbol.kind)
+				{
+					case vscode.SymbolKind.Class:
+					case vscode.SymbolKind.Enum:
+					case vscode.SymbolKind.Interface:
+					case vscode.SymbolKind.Object:
+					case vscode.SymbolKind.Struct:
+						fold = foldTypes
+						break
 
-				case vscode.SymbolKind.Method:
-				case vscode.SymbolKind.Property:
-				case vscode.SymbolKind.Constructor:
-				case vscode.SymbolKind.Function:
-				case vscode.SymbolKind.Null:
-				case vscode.SymbolKind.Event:
-				case vscode.SymbolKind.Operator:
-					fold = true
-					break
+					case vscode.SymbolKind.Method:
+					case vscode.SymbolKind.Property:
+					case vscode.SymbolKind.Constructor:
+					case vscode.SymbolKind.Function:
+					case vscode.SymbolKind.Null:
+					case vscode.SymbolKind.Event:
+					case vscode.SymbolKind.Operator:
+						fold = true
+						break
 
 				case vscode.SymbolKind.Variable:
 					fold = symbol.range.end.line - symbol.range.start.line > 3
 					break
 
-				case vscode.SymbolKind.String:
-					fold = foldStrings
-					break
+					case vscode.SymbolKind.String:
+						fold = isMarkdown || range.end.line - range.start.line > 3
+						break
 
-				case vscode.SymbolKind.File:
-				case vscode.SymbolKind.Module:
-				case vscode.SymbolKind.Namespace:
-				case vscode.SymbolKind.Package:
-				case vscode.SymbolKind.Field:
-				case vscode.SymbolKind.Constant:
-				case vscode.SymbolKind.Number:
-				case vscode.SymbolKind.Boolean:
-				case vscode.SymbolKind.Array:
-				case vscode.SymbolKind.Key:
-				case vscode.SymbolKind.EnumMember:
-				case vscode.SymbolKind.TypeParameter:
-					fold = false
-					break
+					case vscode.SymbolKind.File:
+					case vscode.SymbolKind.Module:
+					case vscode.SymbolKind.Namespace:
+					case vscode.SymbolKind.Package:
+					case vscode.SymbolKind.Field:
+					case vscode.SymbolKind.Constant:
+					case vscode.SymbolKind.Number:
+					case vscode.SymbolKind.Boolean:
+					case vscode.SymbolKind.Array:
+					case vscode.SymbolKind.Key:
+					case vscode.SymbolKind.EnumMember:
+					case vscode.SymbolKind.TypeParameter:
+						fold = false
+						break
+				}
+				toFold.push({ symbol, fold })
 			}
-
-			fold &&= !symbol.range.isSingleLine
-			fold &&= foldCurrent || !textEditor.selections.some(selection => symbol.range.intersection(selection))
-
-			// NOTE: Use range.end because templates and functions can span multiple lines before the foldable range
-			if (fold)
-				symbolsToFold.push(symbol)
-
-			gatherFoldRanges(symbol.children)
+			gatherSymbolsToFold(symbol.children, toFold)
 		}
 	}
 
-	gatherFoldRanges(documentSymbols.rootSymbols)
-
-	const toFold: number[] = []
-	const foldingRanges = await vscode.commands.executeCommand<vscode.FoldingRange[]>("vscode.executeFoldingRangeProvider", textEditor.document.uri)
-
-	// HACK: Skip folding for any symbols that don't have a corresponding folding range. This happens when a symbol is
-	// inside a disabled processor block in C++. https://github.com/microsoft/vscode-cpptools/issues/10963
-	for (const symbol of symbolsToFold)
+	type SymbolToFold =
 	{
+		symbol: vscode.DocumentSymbol
+		fold:   boolean
+	}
+	const symbolsToFold: SymbolToFold[] = []
+	gatherSymbolsToFold(documentSymbols.rootSymbols, symbolsToFold)
+
+	// NOTE: We can't naively pass the symbol start line numbers to editor.fold below. There are
+	// various reasons why symbols may not have folding ranges or the folding ranges may not be
+	// exactly where the symbols start. Some examples:
+	//
+	// * There is no folding range for a symbol in C++ in inside a disabled processor block
+	//   https://github.com/microsoft/vscode-cpptools/issues/10963
+	//
+	// * The folding range for C++ templates begins at the normal class/function part, not the
+	//   template part.
+	//
+	// As a shitty workaround we have to try to correlate symbols and folding ranges manually.
+
+	const foldingRanges = await vscode.commands.executeCommand<vscode.FoldingRange[]>(
+		"vscode.executeFoldingRangeProvider", textEditor.document.uri)
+
+	function intersects(selection: vscode.Selection, range: vscode.FoldingRange)
+	{
+		const intersects = !(selection.start.line > range.end || selection.end.line < range.start)
+		return intersects
+	}
+
+	const linesToFold: number[] = []
+	for (const symbolToFold of symbolsToFold)
+	{
+		let fold = false
+		let closestRange = new vscode.FoldingRange(Infinity, 0)
+
 		for (const foldingRange of foldingRanges)
 		{
-			const range = new vscode.Range(foldingRange.start, Infinity, foldingRange.end, 0)
-			if (symbol.range.contains(range))
-				toFold.push(foldingRange.start)
+			const symbolRange = symbolToFold.symbol.range
+			const symbolContainsRange = symbolRange.start.line <= foldingRange.start && symbolRange.end.line >= foldingRange.end
+			const rangeIsCloser = foldingRange.start < closestRange.start && foldingRange.end > closestRange.end
+			if (symbolContainsRange && rangeIsCloser)
+			{
+				fold = symbolToFold.fold
+				closestRange = foldingRange
+			}
 		}
+
+		fold &&= foldCurrent || !textEditor.selections.some(s => intersects(s, closestRange))
+		if (fold)
+			linesToFold.push(closestRange.start)
 	}
 
 	for (const foldingRange of foldingRanges)
 	{
-		let fold = false
-		switch (foldingRange.kind)
+		if (foldingRange.kind == vscode.FoldingRangeKind.Comment)
 		{
-			case vscode.FoldingRangeKind.Comment:
-				fold = (foldingRange.end - foldingRange.start) >= 2
-				break
+			let fold = true
+			fold &&= (foldingRange.end - foldingRange.start) >= 2
+			fold &&= foldCurrent || !textEditor.selections.some(s => intersects(s, foldingRange))
+			if (fold)
+				linesToFold.push(foldingRange.start)
 		}
-
-		const range = new vscode.Range(foldingRange.start, 0, foldingRange.end - 1, Infinity)
-		fold &&= foldCurrent || !textEditor.selections.some(selection => range.intersection(selection))
-
-		if (fold)
-			toFold.push(foldingRange.start)
 	}
 
-	await vscode.commands.executeCommand("editor.fold", { levels: 1, selectionLines: toFold })
+	await vscode.commands.executeCommand("editor.fold", { levels: 1, selectionLines: linesToFold })
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -312,7 +375,6 @@ type SymbolNavigation =
 	highlightBorderLR:   vscode.TextEditorDecorationType
 	highlightBorderT:    vscode.TextEditorDecorationType
 	highlightBorderB:    vscode.TextEditorDecorationType
-	statusBarMessage?:   vscode.Disposable
 }
 
 type DocumentSymbols =
@@ -348,7 +410,6 @@ async function cacheDocumentSymbols(textEditor: vscode.TextEditor): Promise<Docu
 
 			documentSymbols = { rootSymbols, highlightRanges: [], lastChildren: [], lastSelections: textEditor.selections }
 			symbolNav.textDocumentSymbols.set(textEditor.document, documentSymbols)
-			symbolNav.statusBarMessage?.dispose()
 
 			const nestedSymbols: vscode.DocumentSymbol[] = []
 			for (const maybeNested of rootSymbols)
@@ -362,11 +423,6 @@ async function cacheDocumentSymbols(textEditor: vscode.TextEditor): Promise<Docu
 			}
 			for (const nested of nestedSymbols)
 				rootSymbols.splice(rootSymbols.findIndex(s => s == nested), 1)
-		}
-		else
-		{
-			symbolNav.statusBarMessage?.dispose()
-			symbolNav.statusBarMessage = vscode.window.setStatusBarMessage("No symbols found in this file", 3000)
 		}
 	}
 
@@ -491,6 +547,8 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 
 	// NOTE: Measured 0.4 ms to navigate in a file with 1006 symbols
 	// NOTE: Measured 5.0 ms to gather symbols in a file with 1006 symbols
+
+	// TODO: Maybe skip symbols inside functions in ts?
 
 	// BUG: Statements include semicolon, structs do not
 

@@ -89,6 +89,14 @@
         "title": "Select to Child Symbol"
       },
       {
+        "command": "akbyrd.editor.deleteSymbol.prev",
+        "title": "Delete Symbol Above Cursor"
+      },
+      {
+        "command": "akbyrd.editor.deleteSymbol.next",
+        "title": "Delete Symbol Below Cursor"
+      },
+      {
         "command": "akbyrd.editor.deleteChunk.prev",
         "title": "Delete Chunk Above Cursor"
       },
@@ -153,6 +161,14 @@
         },
         {
           "command": "akbyrd.editor.cursorSelectTo.symbol.next",
+          "when": "activeEditor"
+        },
+        {
+          "command": "akbyrd.editor.deleteSymbol.prev",
+          "when": "activeEditor"
+        },
+        {
+          "command": "akbyrd.editor.deleteSymbol.next",
           "when": "activeEditor"
         },
         {
