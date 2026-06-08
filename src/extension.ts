@@ -1,5 +1,4 @@
 import * as vscode from "vscode"
-import * as path   from "path"
 import * as ts     from "web-tree-sitter"
 
 export function activate(context: vscode.ExtensionContext)
@@ -335,9 +334,9 @@ async function wrap_lines_pattern(textEditor: vscode.TextEditor, edit: vscode.Te
 	function classifyLine(text: string): BlockType | undefined
 	{
 		if (/^\s*(\/\/|#|--|;)/.test(text)) return BlockType.LineComment
-		if (/\/\*/.test(text))             return BlockType.BlockComment
-		if (/^\s*\*/.test(text))           return BlockType.BlockComment
-		if (/\S/.test(text))               return BlockType.Prose
+		if (/\/\*/.test(text))              return BlockType.BlockComment
+		if (/^\s*\*/.test(text))            return BlockType.BlockComment
+		if (/\S/.test(text))                return BlockType.Prose
 		return undefined
 	}
 
@@ -354,7 +353,7 @@ async function wrap_lines_pattern(textEditor: vscode.TextEditor, edit: vscode.Te
 			if (line.isEmptyOrWhitespace) { lineNum++; continue }
 
 			const type = classifyLine(line.text)
-			if (type === undefined)         { lineNum++; continue }
+			if (type === undefined)       { lineNum++; continue }
 
 			let startLine = lineNum
 			let endLine   = lineNum
@@ -375,8 +374,8 @@ async function wrap_lines_pattern(textEditor: vscode.TextEditor, edit: vscode.Te
 				while (startLine > 0)
 				{
 					const prev = document.lineAt(startLine - 1)
-					if (prev.isEmptyOrWhitespace)                                            break
-					if (type === BlockType.LineComment && classifyLine(prev.text) !== type)  break
+					if (prev.isEmptyOrWhitespace)                                           break
+					if (type === BlockType.LineComment && classifyLine(prev.text) !== type) break
 					startLine--
 				}
 
@@ -384,8 +383,8 @@ async function wrap_lines_pattern(textEditor: vscode.TextEditor, edit: vscode.Te
 				while (endLine < document.lineCount - 1)
 				{
 					const next = document.lineAt(endLine + 1)
-					if (next.isEmptyOrWhitespace)                                            break
-					if (type === BlockType.LineComment && classifyLine(next.text) !== type)  break
+					if (next.isEmptyOrWhitespace)                                           break
+					if (type === BlockType.LineComment && classifyLine(next.text) !== type) break
 					endLine++
 				}
 			}
@@ -443,23 +442,84 @@ async function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditor
 		}
 	}
 
-	function consume(s: string, offset: number, p: RegExp|string): number
+	type StringView = {
+		str   : string,
+		begin : number,
+		end   : number,
+	}
+
+	function consumeStart(v: StringView, p: RegExp|string): StringView
 	{
+		assert(v.begin >= 0)
+		assert(v.end <= v.str.length)
+
+		const begin = v.begin
+
 		if (p instanceof RegExp)
 		{
-			for (; offset < s.length; offset++)
+			for (; v.begin < v.end; v.begin++)
 			{
-				if (!s[offset].match(p))
+				if (!v.str[v.begin].match(p))
 					break
 			}
-			return offset
 		}
 		else
 		{
-			if (s.startsWith(p, offset))
-				offset += p.length
-			return offset
+			if (v.str.startsWith(p, v.begin))
+				v.begin += p.length
 		}
+
+		return { str: v.str, begin, end: v.begin }
+	}
+
+	function consumeEnd(v: StringView, p: RegExp|string): StringView
+	{
+		assert(v.begin >= 0)
+		assert(v.end <= v.str.length)
+
+		const end = v.end
+
+		if (p instanceof RegExp)
+		{
+			for (; v.end > 0; v.end--)
+			{
+				if (!v.str[v.end - 1].match(p))
+					break
+			}
+		}
+		else
+		{
+			if (v.end > 0 && v.str.endsWith(p, v.end - 1))
+				v.end -= p.length
+		}
+
+		return { str: v.str, begin: v.end, end }
+	}
+
+	// TODO: Round to a multiple of tebWidth
+	// TODO: Handle mixed indentation
+	function consumeIndent(v: StringView, maxSpaces: number) : number
+	{
+		assert(v.begin >= 0)
+		assert(v.end <= v.str.length)
+
+		var spaces = 0
+		var stop   = false
+
+		for (; v.begin < v.end && !stop; v.begin++)
+		{
+			const char = v.str[v.begin]
+			switch (char)
+			{
+				default: stop = true; break
+				case ' ': spaces += 1; break
+				case '\t': spaces += tabSize; break
+			}
+
+			stop ||= spaces >= maxSpaces
+		}
+
+		return spaces
 	}
 
 	function assert(value: unknown): asserts value
@@ -683,12 +743,13 @@ async function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditor
 		}
 	}
 
-	// TODO: Compare: incremental vs monolithic
 	// TODO: Actually split blocks
 	// TODO: Figure out how to handle code in markdown / other embedded languages
 	// TODO: Ignore embedded single line comments
 	// TODO: Make it unit testable
 	// TODO: Convert block comment style (block or line)
+	// TODO: first line, trailing - if single line, ignore
+	// TODO: first line, embedded - prune before this
 
 	// Wrap blocks
 	{
@@ -701,9 +762,9 @@ async function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditor
 		// new one at the same location. This means we can't use a naive approach that unwraps the
 		// block and then re-wraps it.
 
-		const trimmedPrefixes = []
+		const trimmedBlockPrefixes = []
 		for (const prefix of languageData.blockComment)
-			trimmedPrefixes.push(prefix.trimStart())
+			trimmedBlockPrefixes.push(prefix.trimStart())
 
 		for (const block of blocks)
 		{
@@ -715,83 +776,55 @@ async function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditor
 				case BlockType.blockComment:
 				case BlockType.lineComment:
 				{
-					const incremental = false
-					if (incremental)
+					const trimmedPrefixes = block.type == BlockType.blockComment ? trimmedBlockPrefixes : block.prefix
+					var maxSpaces = Number.POSITIVE_INFINITY
+
+					const lines : string[] = []
+					for (var iLine = block.range.start.line; iLine <= block.range.end.line; iLine++)
 					{
+						const line : vscode.TextLine = textEditor.document.lineAt(iLine)
 
-					}
-					else
-					{
-						// TODO: Implement
-						// * for each line (including dummy before first)
-						// *     replace newline, indent, sequence
+						const isFirstLine   = iLine == block.range.start.line
+						const isLastLine    = iLine == block.range.end.line
+						const isContLine    = !isFirstLine && !isLastLine
+						const trimmedPrefix = trimmedPrefixes[isFirstLine ? 0 : 1]
 
-						// first line, trailing - if single line, ignore
-						// first line, embedded - prune before this
-						// all lines            - normalize indentation
-						//    * count indentation (handle mixed tabs and spaces)
-						//    * if has expected prefix
-						//        if within 1 tab stop of expected, assume prefix, else content
-						// all lines            - normalize prefix
+						const rLine    = block.range.intersection(line.range)!
+						const vIndent  = { str: line.text, begin: 0, end: line.firstNonWhitespaceCharacterIndex }
+						const spaces   = consumeIndent(vIndent, maxSpaces)
+						const vContent = { str: line.text, begin: Math.max(vIndent.end, rLine.start.character), end: rLine.end.character }
+						const vPrefix  = consumeStart(vContent, trimmedPrefix) // Expected prefix
+						const vCustom  = consumeStart(vContent, /[^\w\s]/)     // Custom prefix
+						const vSpace   = consumeStart(vContent, /\s/)          // Whitespace
 
-						// TODO: Handle non-standard prefixes
-						// /**
-						// /*!
-						// ///
-						// //!
-						//
-						// /*!<
-						// /**<
-						// //!<
-						// ///<
-						//
-						// check for prefix
-						// consume until space or alphanumeric
-						// consume space
-						// line comment - use prefix from first line
-						// block comment - use prefix from second line
-
-						// TODO: This needs to be position based, not line based
-
-						const lines :string[] = []
-						for (var iLine = block.range.start.line; iLine <= block.range.end.line; iLine++)
+						if (isFirstLine)
 						{
-							const lineText : string = textEditor.document.lineAt(iLine).text
-
-							var iChar = 0
-							var spaces = 0
-							var stop = false
-							for (; iChar < lineText.length && !stop; iChar++)
-							{
-								const char = lineText[iChar]
-								switch (char)
-								{
-									default: stop = true; break
-									case ' ': spaces += 1; break
-									// TODO: Handle mixed indentation
-									case '\t': spaces += tabSize; break
-								}
-							}
-							iChar = Math.max(0, iChar - 1)
-
-							const begin   = iLine == block.range.start.line
-							const cont    = iLine < block.range.end.line
-							const iPrefix = begin ? 0 : cont ? 1 : 2
-							const prefix  = block.prefix[iPrefix]
-							const trimmed = block.type == BlockType.blockComment ? trimmedPrefixes[iPrefix] : block.prefix[iPrefix]
-
-							const iEndPrefix    = iChar = consume(lineText, iChar, trimmed)   // Expected prefix
-							const iEndCustom    = iChar = consume(lineText, iChar, /[^\w\s]/) // Custom prefix
-							const iBeginContent = iChar = consume(lineText, iChar, /\s/)      // Whitespace
-
-							const customPrefix = lineText.substring(iEndPrefix, iEndCustom)
-							const lineContent  = lineText.substring(iBeginContent)
-							lines.push(`${block.indent.string}${prefix}${customPrefix} ${lineContent}`)
+							maxSpaces       = spaces
+							block.prefix[0] = line.text.substring(vPrefix.begin, vCustom.end)
+						}
+						else if (isContLine)
+						{
+							block.prefix[1] = line.text.substring(vPrefix.begin, vCustom.end)
 						}
 
-						const blockText = lines.join('\n')
-						console.log(`block text: "${blockText}"`)
+						if (isLastLine && block.type == BlockType.blockComment)
+						{
+							const vSuffix = consumeEnd(vContent, trimmedPrefixes[2]) // Expected suffix
+							const vCustom = consumeEnd(vContent, /[^\w\s]/)          // Custom suffix
+							const vSpace  = consumeEnd(vContent, /\s/)               // Whitespace
+
+							block.prefix[2] = line.text.substring(vCustom.begin, vSuffix.end)
+						}
+
+						if (vContent.end > vContent.begin)
+						{
+							const lineContent = line.text.substring(vContent.begin, vContent.end)
+							lines.push(`${lineContent}`)
+						}
 					}
+
+					const blockText = lines.join(' ')
+					console.log(`block text: "${blockText}"`)
 					break
 				}
 
