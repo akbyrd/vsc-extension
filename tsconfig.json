@@ -15,5 +15,6 @@
 		"noImplicitOverride": true,
 		"noImplicitReturns": true,
 		"skipLibCheck": true,
+		"types": ["node"],
 	}
 }
