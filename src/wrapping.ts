@@ -36,6 +36,32 @@ type StringView = {
 	end   : number,
 }
 
+// TODO: Round to a multiple of tebWidth
+// TODO: Handle mixed indentation
+function consumeIndent(v: StringView, tabSize: number, maxSpaces: number) : number
+{
+	assert(v.begin >= 0)
+	assert(v.end <= v.str.length)
+
+	var spaces = 0
+	var stop   = false
+
+	for (; v.begin < v.end && !stop; v.begin++)
+	{
+		const char = v.str[v.begin]
+		switch (char)
+		{
+			default: stop = true; break
+			case ' ': spaces += 1; break
+			case '\t': spaces += tabSize; break
+		}
+
+		stop ||= spaces >= maxSpaces
+	}
+
+	return spaces
+}
+
 function consumeStart(v: StringView, p: RegExp|string): StringView
 {
 	assert(v.begin >= 0)
@@ -82,32 +108,6 @@ function consumeEnd(v: StringView, p: RegExp|string): StringView
 	}
 
 	return { str: v.str, begin: v.end, end }
-}
-
-// TODO: Round to a multiple of tebWidth
-// TODO: Handle mixed indentation
-function consumeIndent(v: StringView, tabSize: number, maxSpaces: number) : number
-{
-	assert(v.begin >= 0)
-	assert(v.end <= v.str.length)
-
-	var spaces = 0
-	var stop   = false
-
-	for (; v.begin < v.end && !stop; v.begin++)
-	{
-		const char = v.str[v.begin]
-		switch (char)
-		{
-			default: stop = true; break
-			case ' ': spaces += 1; break
-			case '\t': spaces += tabSize; break
-		}
-
-		stop ||= spaces >= maxSpaces
-	}
-
-	return spaces
 }
 
 function assert(value: unknown): asserts value
