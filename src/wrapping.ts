@@ -1,39 +1,118 @@
 import * as vscode from "vscode"
 import * as ts from "web-tree-sitter"
 
-function toPosition(p: ts.Point): vscode.Position
+export class Position
 {
-	return new vscode.Position(p.row, p.column)
-}
+	constructor(
+		public line      : number = 0,
+		public character : number = 0,
+	) {}
 
-function toRange(n: ts.Node): vscode.Range
-{
-	const start = toPosition(n.startPosition)
-	const end   = toPosition(n.endPosition)
-	return new vscode.Range(start, end)
-}
-
-function toPoint(p: vscode.Position): ts.Point
-{
-	return { row: p.line, column: p.character }
-}
-
-function toString(r: vscode.Range | ts.Node): string
-{
-	if (r instanceof vscode.Range)
+	isAfter(x: Position): boolean
 	{
-		return `[${r.start.line + 1}, ${r.start.character + 1}] -> [${r.end.line + 1}, ${r.end.character + 1}]`
+		return this.compareTo(x) > 0
 	}
-	else
+
+	compareTo(x: Position): number
 	{
-		return `[${r.startPosition.row + 1}, ${r.startPosition.column + 1}] -> [${r.endPosition.row + 1}, ${r.endPosition.column + 1}]`
+		const lineCompare = +(this.line > x.line) - +(this.line < x.line)
+		const charCompare = +(this.character > x.character) - +(this.character < x.character)
+		return lineCompare ? lineCompare : charCompare
 	}
+}
+
+export class Range
+{
+	constructor(
+		public start : Position = new Position(),
+		public end   : Position = new Position(),
+	) {}
+
+	intersection(x: Range): Range | undefined
+	{
+		return new Range(
+			this.start.isAfter(x.start) ? this.start : x.start,
+			this.end  .isAfter(x.end)   ? x.end      : this.end,
+		)
+	}
+}
+
+export type TextLine = {
+	range : Range,
+	text  : string,
 }
 
 type StringView = {
 	str   : string,
 	begin : number,
 	end   : number,
+}
+
+export type Context = {
+	tabSize    : number,
+	useSpaces  : boolean,
+	lineWidth  : number,
+	languageId : string,
+	selections : readonly Range[],
+	getText    : () => string,
+	getLine    : (i: number) => TextLine,
+	onError    : (s: string) => void,
+}
+
+type PrefixSet = [string, string, string]
+
+type LanguageData = {
+	grammar      : string,
+	lineComment  : string,
+	blockComment : PrefixSet,
+
+	// TODO: Bad names
+	lineCommentSet?      : PrefixSet,
+	trimmedBlockComment? : PrefixSet,
+}
+
+type Parse = {
+	parser: ts.Parser,
+	tree:   ts.Tree,
+}
+
+enum BlockType
+{
+	null,
+	lineComment,
+	blockComment,
+	prose,
+}
+
+type Block = {
+	type            : BlockType,
+	range           : Range,
+	languageId      : string,
+	prefixes        : PrefixSet,
+	trimmedPrefixes : PrefixSet,
+	customPrefixes  : PrefixSet,
+
+	text            : string,
+	indent          : number,
+}
+
+function toPosition(p: ts.Point): Position
+{
+	const line      = p.row
+	const character = p.column
+	return new Position(line, character)
+}
+
+function toRange(n: ts.Node): Range
+{
+	const start = toPosition(n.startPosition)
+	const end   = toPosition(n.endPosition)
+	return new Range(start, end)
+}
+
+function toPoint(p: Position): ts.Point
+{
+	return { row: p.line, column: p.character }
 }
 
 // TODO: Round to a multiple of tebWidth
@@ -124,9 +203,6 @@ async function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditor
 	// TODO: Cache query results
 	// TODO: Share statusBarMessage
 
-	// TODO: Remove this
-	console.clear()
-
 	const tabSize      : number   = textEditor.options.tabSize as number
 	const useSpaces    : boolean  = textEditor.options.insertSpaces as boolean
 	const languageId   : string   = textEditor.document.languageId
@@ -142,7 +218,7 @@ async function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditor
 	}
 	const blocks : {
 		type     : BlockType,
-		range    : vscode.Range,
+		range    : Range,
 		endNode? : ts.Node,
 		indent?  : {
 			spaces : number,
@@ -193,8 +269,8 @@ async function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditor
 				// lines. Neither vscode nor tree sitter appear to have a problem with column positions
 				// that go past the end of the line. But vscode throws for positions before the
 				// beginning of the line (i.e. negative values).
-				const start : vscode.Position = selection.start.with(undefined, Math.max(selection.start.character - 1, 0))
-				const end   : vscode.Position = selection.end  .with(undefined, selection.end.character + 1)
+				const start : Position = selection.start.with(undefined, Math.max(selection.start.character - 1, 0))
+				const end   : Position = selection.end  .with(undefined, selection.end.character + 1)
 
 				const query    : ts.Query          = new ts.Query(parse.parser.language!, "(comment) @c")
 				const options  : ts.QueryOptions   = { startPosition: toPoint(start), endPosition: toPoint(end) }
@@ -258,7 +334,7 @@ async function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditor
 
 						blocks.push({
 							type:    BlockType.lineComment,
-							range:   new vscode.Range(toPosition(startNode.startPosition), toPosition(endNode.endPosition)),
+							range:   new Range(toPosition(startNode.startPosition), toPosition(endNode.endPosition)),
 							endNode: endNode,
 						});
 					}
@@ -282,12 +358,6 @@ async function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditor
 				});
 			}
 		}
-	}
-
-	// TODO: Remove
-	{
-		for (const block of blocks)
-			console.log(BlockType[block.type], toString(block.range))
 	}
 
 	// Analyze and split blocks
@@ -381,7 +451,7 @@ async function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditor
 					const lines : string[] = []
 					for (var iLine = block.range.start.line; iLine <= block.range.end.line; iLine++)
 					{
-						const line : vscode.TextLine = textEditor.document.lineAt(iLine)
+						const line : TextLine = textEditor.document.lineAt(iLine)
 
 						const isFirstLine   = iLine == block.range.start.line
 						const isLastLine    = iLine == block.range.end.line
@@ -389,7 +459,7 @@ async function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditor
 						const trimmedPrefix = trimmedPrefixes[isFirstLine ? 0 : 1]
 
 						const rLine    = block.range.intersection(line.range)!
-						const vIndent  = { str: line.text, begin: 0, end: line.firstNonWhitespaceCharacterIndex }
+						const vIndent  = { str: line.text, begin: 0, end: rLine.end.character }
 						const spaces   = consumeIndent(vIndent, tabSize, maxSpaces)
 						const vContent = { str: line.text, begin: Math.max(vIndent.end, rLine.start.character), end: rLine.end.character }
 						const vPrefix  = consumeStart(vContent, trimmedPrefix) // Expected prefix
