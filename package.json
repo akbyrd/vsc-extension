@@ -223,7 +223,7 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
-    "test": "node --test \"src/**/*.test.ts\""
+    "test": "tsc -p tsconfig.test.json && node --test \"out/**/*.test.js\""
   },
   "devDependencies": {
     "@types/node": "16.x",
