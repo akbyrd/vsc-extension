@@ -114,27 +114,21 @@ function toPoint(p: Position): ts.Point
 	return { row: p.line, column: p.character }
 }
 
-// TODO: Round to a multiple of tebWidth
-// TODO: Handle mixed indentation
-function consumeIndent(v: StringView, tabSize: number, maxSpaces: number) : number
+function consumeIndent(v: StringView, tabSize: number, maxSpaces: number): number
 {
 	assert(v.begin >= 0)
+	assert(v.begin <= v.end)
 	assert(v.end <= v.str.length)
 
 	var spaces = 0
-	var stop   = false
 
-	for (; v.begin < v.end && !stop; v.begin++)
+	for (; v.begin < v.end && spaces < maxSpaces; ++v.begin)
 	{
 		const char = v.str[v.begin]
-		switch (char)
-		{
-			default: stop = true; break
-			case ' ': spaces += 1; break
-			case '\t': spaces += tabSize; break
-		}
 
-		stop ||= spaces >= maxSpaces
+		     if (char == ' ')  spaces += 1
+		else if (char == '\t') spaces += tabSize
+		else break
 	}
 
 	return spaces
@@ -143,6 +137,7 @@ function consumeIndent(v: StringView, tabSize: number, maxSpaces: number) : numb
 function consumeStart(v: StringView, p: RegExp|string): StringView
 {
 	assert(v.begin >= 0)
+	assert(v.begin <= v.end)
 	assert(v.end <= v.str.length)
 
 	const begin = v.begin
@@ -167,13 +162,14 @@ function consumeStart(v: StringView, p: RegExp|string): StringView
 function consumeEnd(v: StringView, p: RegExp|string): StringView
 {
 	assert(v.begin >= 0)
+	assert(v.begin <= v.end)
 	assert(v.end <= v.str.length)
 
 	const end = v.end
 
 	if (p instanceof RegExp)
 	{
-		for (; v.end > 0; v.end--)
+		for (; v.end > v.begin; v.end--)
 		{
 			if (!v.str[v.end - 1].match(p))
 				break
@@ -188,6 +184,31 @@ function consumeEnd(v: StringView, p: RegExp|string): StringView
 	return { str: v.str, begin: v.end, end }
 }
 
+function expandEnd(v: StringView, p: RegExp|string): StringView
+{
+	assert(v.begin >= 0)
+	assert(v.begin <= v.end)
+	assert(v.end <= v.str.length)
+
+	const end = v.end
+
+	if (p instanceof RegExp)
+	{
+		for (; v.end < v.str.length; v.end++)
+		{
+			if (!v.str[v.end].match(p))
+				break
+		}
+	}
+	else
+	{
+		if (v.end < v.str.length && v.str.endsWith(p, v.end))
+			v.end += p.length
+	}
+
+	return { str: v.str, begin: end, end: v.end }
+}
+
 function assert(value: unknown): asserts value
 {
 	console.assert(value)
@@ -195,10 +216,7 @@ function assert(value: unknown): asserts value
 
 async function parseDocument(ctx: Context): Promise<Parse|undefined>
 {
-	var parse : {
-		parser: ts.Parser,
-		tree:   ts.Tree,
-	} | undefined
+	const languageData = languages[ctx.languageId]
 	if (languageData)
 	{
 		try
@@ -208,18 +226,33 @@ async function parseDocument(ctx: Context): Promise<Parse|undefined>
 			const wasm     : ArrayBuffer = await response.arrayBuffer()
 			const language : ts.Language = await ts.Language.load(new Uint8Array(wasm))
 			const parser   : ts.Parser   = new ts.Parser().setLanguage(language)
-			const text     : string      = textEditor.document.getText()
+			const text     : string      = ctx.getText()
 			const tree     : ts.Tree     = parser.parse(text)!
 			console.assert(tree)
 
-			parse = { parser, tree }
+			return { parser, tree }
 		}
 		catch (e)
 		{
-			console.log(e)
-			//symbolNav.statusBarMessage?.dispose()
-			//symbolNav.statusBarMessage = vscode.window.setStatusBarMessage(`Failed to parse: ${String(e)}`, 3000)
+			ctx.onError(`Failed to parse: ${String(e)}`)
 		}
+	}
+
+	return undefined
+}
+
+function cachePrefixes(languageData: LanguageData)
+{
+	if (!languageData.trimmedBlockComment)
+	{
+		const bc = languageData.blockComment.map(s => s.trimStart()) as PrefixSet
+		languageData.trimmedBlockComment = bc
+	}
+
+	if (!languageData.lineCommentSet)
+	{
+		const lc = languageData.lineComment
+		languageData.lineCommentSet = [lc, lc, ""]
 	}
 }
 
@@ -229,9 +262,13 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 
 	if (parse)
 	{
-		// TODO: Handle overlapping queries (due to character expand)
+		const languageData = languages[ctx.languageId]
 
-		const sortedSelections = textEditor.selections.slice()
+		cachePrefixes(languageData)
+		assert(languageData.lineCommentSet)
+		assert(languageData.trimmedBlockComment)
+
+		const sortedSelections = ctx.selections.slice()
 		sortedSelections.sort((a, b) => a.start.compareTo(b.start))
 
 		for (const selection of sortedSelections)
@@ -241,8 +278,9 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 			// lines. Neither vscode nor tree sitter appear to have a problem with column positions
 			// that go past the end of the line. But vscode throws for positions before the
 			// beginning of the line (i.e. negative values).
-			const start : Position = selection.start.with(undefined, Math.max(selection.start.character - 1, 0))
-			const end   : Position = selection.end  .with(undefined, selection.end.character + 1)
+
+			const start : Position = new Position(selection.start.line, Math.max(selection.start.character - 1, 0))
+			const end   : Position = new Position(selection.end.line,   selection.end.character + 1)
 
 			const query    : ts.Query          = new ts.Query(parse.parser.language!, "(comment) @c")
 			const options  : ts.QueryOptions   = { startPosition: toPoint(start), endPosition: toPoint(end) }
@@ -281,7 +319,7 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 						const isComment  = node?.type == "comment"
 						const isLine     = node?.text.startsWith(languageData.lineComment)
 						const isAdjacent = node?.startPosition.row == startNode.startPosition.row - 1
-						const isTrailing = node?.startPosition.row == node?.previousSibling?.startPosition.row
+						const isTrailing = node?.startPosition.row == node?.previousSibling?.endPosition.row
 						if (isComment && isLine && isAdjacent && !isTrailing)
 						{
 							startNode = node
@@ -296,7 +334,8 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 						const isComment  = node?.type == "comment"
 						const isLine     = node?.text.startsWith(languageData.lineComment)
 						const isAdjacent = node?.startPosition.row == endNode.startPosition.row + 1
-						if (isComment && isLine && isAdjacent)
+						const isTrailing = endNode.startPosition.row == endNode.previousSibling?.endPosition.row
+						if (isComment && isLine && isAdjacent && !isTrailing)
 						{
 							endNode = node
 							continue
@@ -304,85 +343,61 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 						break
 					}
 
+					const start      = toPosition(startNode.startPosition)
+					const end        = toPosition(endNode.endPosition)
+					const prevEnd    = startNode.previousSibling?.endPosition
+					const isTrailing = prevEnd?.row == start.line
+					start.character  = isTrailing ? prevEnd.column : 0
+
 					blocks.push({
-						type:    BlockType.lineComment,
-						range:   new Range(toPosition(startNode.startPosition), toPosition(endNode.endPosition)),
-						endNode: endNode,
+						type:            BlockType.lineComment,
+						range:           new Range(start, end),
+						languageId:      ctx.languageId,
+						prefixes:        languageData.lineCommentSet,
+						trimmedPrefixes: languageData.lineCommentSet,
+						customPrefixes:  languageData.lineCommentSet,
+						text:            "",
+						indent:          0,
 					});
 				}
 				else
 				{
 					blocks.push({
-						type:  BlockType.blockComment,
-						range: toRange(capture.node),
+						type:            BlockType.blockComment,
+						range:           toRange(capture.node),
+						languageId:      ctx.languageId,
+						prefixes:        languageData.blockComment,
+						trimmedPrefixes: languageData.trimmedBlockComment,
+						customPrefixes:  languageData.blockComment,
+						text:            "",
+						indent:          0,
 					});
 				}
 			}
 		}
 	}
-	else if (languageId == "plaintext")
+	else if (ctx.languageId == "plaintext")
 	{
-		for (const selection of textEditor.selections)
+		for (const selection of ctx.selections)
 		{
 			blocks.push({
-				type:  BlockType.prose,
-				range: selection,
+				type:            BlockType.prose,
+				range:           selection,
+				languageId:      ctx.languageId,
+				prefixes:        ["", "", ""],
+				trimmedPrefixes: ["", "", ""],
+				customPrefixes:  ["", "", ""],
+				text:            "",
+				indent:          0,
 			});
 		}
 	}
+
+	return blocks
 }
 
 function unwrapBlocks(ctx: Context, blocks: Block[])
 {
-	for (const block of blocks)
-	{
-		const text : string = textEditor.document.lineAt(block.range.start).text
-
-		// TODO: Only handle indentation if at the beginning of a line
-
-		// Detect indentation
-		block.indent = {
-			spaces: 0,
-			string: ""
-		}
-		var stop = false
-		for (let i = 0; i < text.length && !stop; i++)
-		{
-			// NOTE: For tabs, we have to ensure tabs stops are handled correctly when indentation
-			// is a mix of tabs and spaces. e.g. a space before a tab doesn't change the indentation
-			// (assuming the tab size is >1).
-			switch (text[i])
-			{
-				default: stop = true; break
-				case ' ':  block.indent.spaces += 1; break
-				// TODO: Handle mixed indentation
-				case '\t': block.indent.spaces += tabSize; break
-			}
-		}
-		const tabs = Math.floor(block.indent.spaces / tabSize)
-		block.indent.string = useSpaces ? " ".repeat(tabs * tabSize) : "\t".repeat(tabs)
-
-		// Detect prefix
-		switch (block.type)
-		{
-			case BlockType.blockComment:
-				block.prefix = languageData.blockComment
-				break
-
-			case BlockType.lineComment:
-				const lc = languageData.lineComment
-				block.prefix = [lc, lc, lc]
-				break
-
-			case BlockType.prose:
-				block.prefix = ["", "", ""]
-				break
-		}
-
-		assert(block.prefix)
-		assert(block.indent)
-	}
-
 	// NOTE: Indentation and line prefixes are normalized. This means:
 	// * Converted to tabs or spaces based on editor settings
 	// * Rounded down to the nearest tab stop based on editor settings
@@ -392,69 +407,79 @@ function unwrapBlocks(ctx: Context, blocks: Block[])
 	// new one at the same location. This means we can't use a naive approach that unwraps the
 	// block and then re-wraps it.
 
-	const trimmedBlockPrefixes = []
-	for (const prefix of languageData.blockComment)
-		trimmedBlockPrefixes.push(prefix.trimStart())
-
 	for (const block of blocks)
 	{
-		assert(block.prefix)
-		assert(block.indent)
+		const languageData = languages[block.languageId]
+		assert(languageData.trimmedBlockComment)
+		assert(languageData.lineCommentSet)
 
 		switch (block.type)
 		{
 			case BlockType.blockComment:
 			case BlockType.lineComment:
 			{
-				const trimmedPrefixes = block.type == BlockType.blockComment ? trimmedBlockPrefixes : block.prefix
-				var maxSpaces = Number.POSITIVE_INFINITY
+				var maxIndent = Number.POSITIVE_INFINITY
 
 				const lines : string[] = []
 				for (var iLine = block.range.start.line; iLine <= block.range.end.line; iLine++)
 				{
-					const line : TextLine = textEditor.document.lineAt(iLine)
+					const line : TextLine = ctx.getLine(iLine)
 
 					const isFirstLine   = iLine == block.range.start.line
 					const isLastLine    = iLine == block.range.end.line
-					const isContLine    = !isFirstLine && !isLastLine
-					const trimmedPrefix = trimmedPrefixes[isFirstLine ? 0 : 1]
+					const isSecondLine  = iLine == block.range.start.line + 1 && !isLastLine
+					const iPrefix       = isFirstLine ? 0 : 1
+					const trimmedPrefix = block.trimmedPrefixes[iPrefix]
+					const trimmedSuffix = block.trimmedPrefixes[2]
 
 					const rLine    = block.range.intersection(line.range)!
-					const vIndent  = { str: line.text, begin: 0, end: rLine.end.character }
-					const spaces   = consumeIndent(vIndent, tabSize, maxSpaces)
-					const vContent = { str: line.text, begin: Math.max(vIndent.end, rLine.start.character), end: rLine.end.character }
+					const vContent = { str: line.text, begin: rLine.start.character, end: rLine.end.character }
+					const indent   = consumeIndent(vContent, ctx.tabSize, maxIndent)
 					const vPrefix  = consumeStart(vContent, trimmedPrefix) // Expected prefix
 					const vCustom  = consumeStart(vContent, /[^\w\s]/)     // Custom prefix
 					const vSpace   = consumeStart(vContent, /\s/)          // Whitespace
 
 					if (isFirstLine)
-					{
-						maxSpaces       = spaces
-						block.prefix[0] = line.text.substring(vPrefix.begin, vCustom.end)
-					}
-					else if (isContLine)
-					{
-						block.prefix[1] = line.text.substring(vPrefix.begin, vCustom.end)
-					}
+						maxIndent = indent
 
-					if (isLastLine && block.type == BlockType.blockComment)
+					if (block.type == BlockType.lineComment)
 					{
-						const vSuffix = consumeEnd(vContent, trimmedPrefixes[2]) // Expected suffix
-						const vCustom = consumeEnd(vContent, /[^\w\s]/)          // Custom suffix
-						const vSpace  = consumeEnd(vContent, /\s/)               // Whitespace
+						if (isFirstLine)
+						{
+							const prefix = line.text.substring(vPrefix.begin, vCustom.end)
+							block.customPrefixes[0] = prefix
+							block.customPrefixes[1] = prefix
+							block.customPrefixes[2] = prefix
+						}
+					}
+					else if (block.type == BlockType.blockComment)
+					{
+						if (isFirstLine || isSecondLine)
+						{
+							const prefix = line.text.substring(vPrefix.begin, vCustom.end)
+							block.customPrefixes[iPrefix] = prefix
+						}
+						else if (isLastLine)
+						{
+							const vSuffix = consumeEnd(vContent, trimmedSuffix) // Expected suffix
+							const vCustom = consumeEnd(vContent, /[^\w\s]/)     // Custom suffix
 
-						block.prefix[2] = line.text.substring(vCustom.begin, vSuffix.end)
+							const suffix = line.text.substring(vCustom.begin, vSuffix.end)
+							block.customPrefixes[2] = suffix
+						}
 					}
 
 					if (vContent.end > vContent.begin)
 					{
+						const vSpace2 = consumeEnd(vContent, /\s/) // Whitespace
+
 						const lineContent = line.text.substring(vContent.begin, vContent.end)
 						lines.push(`${lineContent}`)
 					}
 				}
 
-				const blockText = lines.join(' ')
-				console.log(`block text: "${blockText}"`)
+				block.text   = lines.join(' ')
+				block.indent = maxIndent
 				break
 			}
 
@@ -535,19 +560,30 @@ const languages: Record<string, LanguageData> = {
 	},
 }
 
+// TODO: Consider tokenizing
+// Pro: Probably a lot simpler
+// Pro: Don't need to unwrap
+// Pro: Will normalize more whitespace
+// Con: We'll tokenize more than necessary (compared to doing it lazy at the end of each line)
+// Con: We'll probably do a lot more string concatenation (maybe we handle consecutive tokens without splitting and concatenating?)
+//
+// Can we get tokens from tree sitter? (looks like no)
+// Per-line regex
+
 // TODO: Cache parser
 // TODO: Cache fetch results
 // TODO: Cache language results
 // TODO: Cache parse results
 // TODO: Cache query results
 // TODO: Share statusBarMessage
+// TODO: Handle mixed indentation
 // TODO: Actually split blocks
-// TODO: Figure out how to handle code in markdown / other embedded languages
 // TODO: Ignore embedded single line comments
-// TODO: Make it unit testable
-// TODO: Convert block comment style (block or line)
-// TODO: first line, trailing - if single line, ignore
-// TODO: first line, embedded - prune before this
+// TODO: Apply edits in vscode
+// ----
+// TODO: Handle overlapping queries (due to character expand)
+// TODO: Improve plaintext support
+// TODO: Figure out how to handle code in markdown / other embedded languages
 
 // Spec
 //
