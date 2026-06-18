@@ -489,6 +489,92 @@ function unwrapBlocks(ctx: Context, blocks: Block[])
 	}
 }
 
+function wrapBlocks(ctx: Context, blocks: Block[]): string[]
+{
+	// NOTE: This intentionally does not handle tabs aside from indentation. It's not worth the
+	// complexity to scan for them.
+
+	const results : string[] = []
+	for (const block of blocks)
+	{
+		const tabs   = Math.floor(block.indent / ctx.tabSize)
+		const spaces = tabs * ctx.tabSize
+		const indent = ctx.useSpaces ? " ".repeat(spaces) : "\t".repeat(tabs)
+
+		const lines : string[] = []
+
+		// TODO: Unify implementations once all are complete
+		// TODO: lineWidth does not respect indentation
+
+		function wrap_line_trailing()
+		{
+			const doesFit       = block.text.length - block.range.start.character < ctx.lineWidth
+			const isSingleToken = !block.text.match(/^\s*[^\s]+\s+[^\s]/)
+
+			if (doesFit || isSingleToken)
+			{
+				var prefix = block.customPrefixes[0]
+				const content = block.text
+				const line = ` ${prefix} ${content}`
+				lines.push(line)
+			}
+			else
+			{
+				lines.push("")
+				wrap_isolated()
+			}
+		}
+
+		function wrap_isolated()
+		{
+			var prefix = block.customPrefixes[0]
+
+			const v = { str: block.text, begin: 0, end: block.text.length }
+			for (; v.begin < v.end; v.begin = v.end, v.end = block.text.length)
+			{
+				v.end = v.begin + ctx.lineWidth - prefix.length + 1
+				v.end = Math.max(v.end, v.begin)
+				v.end = Math.min(v.end, block.text.length)
+
+				consumeStart(v, /\s/)      // Whitespace
+				if (v.end != block.text.length)
+					consumeEnd(v, /[^\s]/) // Partial word
+				consumeEnd(v, /\s/)       // Whitespace
+
+				// Force progress - at least one word, even if it doesn't fit
+				if (v.begin == v.end)
+				{
+					expandEnd(v, /\s/)    // Whitespace
+					v.begin = v.end
+					expandEnd(v, /[^\s]/) // Word
+				}
+
+				const content = block.text.slice(v.begin, v.end)
+				const line = `${indent}${prefix} ${content}`
+				lines.push(line)
+
+				prefix = block.customPrefixes[1]
+			}
+
+			if (block.type == BlockType.blockComment)
+			{
+				const suffix = block.customPrefixes[2]
+				const line = `${indent}${suffix}`
+				lines.push(line)
+			}
+		}
+
+		const isTrailing = block.range.start.character != 0
+		isTrailing
+			? wrap_line_trailing()
+			: wrap_isolated()
+
+		const result = lines.join('\n')
+		results.push(result)
+	}
+	return results
+}
+
 export async function wrap_text(ctx: Context): Promise<string[]>
 {
 	console.assert(ctx.tabSize > 0)
@@ -580,6 +666,7 @@ const languages: Record<string, LanguageData> = {
 // TODO: Actually split blocks
 // TODO: Ignore embedded single line comments
 // TODO: Apply edits in vscode
+// TODO: Better exporting from this file
 // ----
 // TODO: Handle overlapping queries (due to character expand)
 // TODO: Improve plaintext support
