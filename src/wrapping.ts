@@ -1,6 +1,120 @@
 import * as vscode from "vscode"
 import * as ts from "web-tree-sitter"
 
+function toPosition(p: ts.Point): vscode.Position
+{
+	return new vscode.Position(p.row, p.column)
+}
+
+function toRange(n: ts.Node): vscode.Range
+{
+	const start = toPosition(n.startPosition)
+	const end   = toPosition(n.endPosition)
+	return new vscode.Range(start, end)
+}
+
+function toPoint(p: vscode.Position): ts.Point
+{
+	return { row: p.line, column: p.character }
+}
+
+function toString(r: vscode.Range | ts.Node): string
+{
+	if (r instanceof vscode.Range)
+	{
+		return `[${r.start.line + 1}, ${r.start.character + 1}] -> [${r.end.line + 1}, ${r.end.character + 1}]`
+	}
+	else
+	{
+		return `[${r.startPosition.row + 1}, ${r.startPosition.column + 1}] -> [${r.endPosition.row + 1}, ${r.endPosition.column + 1}]`
+	}
+}
+
+type StringView = {
+	str   : string,
+	begin : number,
+	end   : number,
+}
+
+function consumeStart(v: StringView, p: RegExp|string): StringView
+{
+	assert(v.begin >= 0)
+	assert(v.end <= v.str.length)
+
+	const begin = v.begin
+
+	if (p instanceof RegExp)
+	{
+		for (; v.begin < v.end; v.begin++)
+		{
+			if (!v.str[v.begin].match(p))
+				break
+		}
+	}
+	else
+	{
+		if (v.str.startsWith(p, v.begin))
+			v.begin += p.length
+	}
+
+	return { str: v.str, begin, end: v.begin }
+}
+
+function consumeEnd(v: StringView, p: RegExp|string): StringView
+{
+	assert(v.begin >= 0)
+	assert(v.end <= v.str.length)
+
+	const end = v.end
+
+	if (p instanceof RegExp)
+	{
+		for (; v.end > 0; v.end--)
+		{
+			if (!v.str[v.end - 1].match(p))
+				break
+		}
+	}
+	else
+	{
+		if (v.end > 0 && v.str.endsWith(p, v.end - 1))
+			v.end -= p.length
+	}
+
+	return { str: v.str, begin: v.end, end }
+}
+
+// TODO: Round to a multiple of tebWidth
+// TODO: Handle mixed indentation
+function consumeIndent(v: StringView, tabSize: number, maxSpaces: number) : number
+{
+	assert(v.begin >= 0)
+	assert(v.end <= v.str.length)
+
+	var spaces = 0
+	var stop   = false
+
+	for (; v.begin < v.end && !stop; v.begin++)
+	{
+		const char = v.str[v.begin]
+		switch (char)
+		{
+			default: stop = true; break
+			case ' ': spaces += 1; break
+			case '\t': spaces += tabSize; break
+		}
+
+		stop ||= spaces >= maxSpaces
+	}
+
+	return spaces
+}
+
+function assert(value: unknown): asserts value
+{
+	console.assert(value)
+}
+
 async function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit)
 {
 	// TODO: Cache parser
@@ -12,121 +126,6 @@ async function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditor
 
 	// TODO: Remove this
 	console.clear()
-
-	function toPosition(p: ts.Point): vscode.Position
-	{
-		return new vscode.Position(p.row, p.column)
-	}
-
-	function toRange(n: ts.Node): vscode.Range
-	{
-		const start = toPosition(n.startPosition)
-		const end   = toPosition(n.endPosition)
-		return new vscode.Range(start, end)
-	}
-
-	function toPoint(p: vscode.Position): ts.Point
-	{
-		return { row: p.line, column: p.character }
-	}
-
-	function toString(r: vscode.Range | ts.Node): string
-	{
-		if (r instanceof vscode.Range)
-		{
-			return `[${r.start.line + 1}, ${r.start.character + 1}] -> [${r.end.line + 1}, ${r.end.character + 1}]`
-		}
-		else
-		{
-			return `[${r.startPosition.row + 1}, ${r.startPosition.column + 1}] -> [${r.endPosition.row + 1}, ${r.endPosition.column + 1}]`
-		}
-	}
-
-	type StringView = {
-		str   : string,
-		begin : number,
-		end   : number,
-	}
-
-	function consumeStart(v: StringView, p: RegExp|string): StringView
-	{
-		assert(v.begin >= 0)
-		assert(v.end <= v.str.length)
-
-		const begin = v.begin
-
-		if (p instanceof RegExp)
-		{
-			for (; v.begin < v.end; v.begin++)
-			{
-				if (!v.str[v.begin].match(p))
-					break
-			}
-		}
-		else
-		{
-			if (v.str.startsWith(p, v.begin))
-				v.begin += p.length
-		}
-
-		return { str: v.str, begin, end: v.begin }
-	}
-
-	function consumeEnd(v: StringView, p: RegExp|string): StringView
-	{
-		assert(v.begin >= 0)
-		assert(v.end <= v.str.length)
-
-		const end = v.end
-
-		if (p instanceof RegExp)
-		{
-			for (; v.end > 0; v.end--)
-			{
-				if (!v.str[v.end - 1].match(p))
-					break
-			}
-		}
-		else
-		{
-			if (v.end > 0 && v.str.endsWith(p, v.end - 1))
-				v.end -= p.length
-		}
-
-		return { str: v.str, begin: v.end, end }
-	}
-
-	// TODO: Round to a multiple of tebWidth
-	// TODO: Handle mixed indentation
-	function consumeIndent(v: StringView, maxSpaces: number) : number
-	{
-		assert(v.begin >= 0)
-		assert(v.end <= v.str.length)
-
-		var spaces = 0
-		var stop   = false
-
-		for (; v.begin < v.end && !stop; v.begin++)
-		{
-			const char = v.str[v.begin]
-			switch (char)
-			{
-				default: stop = true; break
-				case ' ': spaces += 1; break
-				case '\t': spaces += tabSize; break
-			}
-
-			stop ||= spaces >= maxSpaces
-		}
-
-		return spaces
-	}
-
-	function assert(value: unknown): asserts value
-	{
-		console.assert(value)
-	}
-
 
 	const tabSize      : number   = textEditor.options.tabSize as number
 	const useSpaces    : boolean  = textEditor.options.insertSpaces as boolean
@@ -391,7 +390,7 @@ async function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditor
 
 						const rLine    = block.range.intersection(line.range)!
 						const vIndent  = { str: line.text, begin: 0, end: line.firstNonWhitespaceCharacterIndex }
-						const spaces   = consumeIndent(vIndent, maxSpaces)
+						const spaces   = consumeIndent(vIndent, tabSize, maxSpaces)
 						const vContent = { str: line.text, begin: Math.max(vIndent.end, rLine.start.character), end: rLine.end.character }
 						const vPrefix  = consumeStart(vContent, trimmedPrefix) // Expected prefix
 						const vCustom  = consumeStart(vContent, /[^\w\s]/)     // Custom prefix
