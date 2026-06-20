@@ -1,5 +1,50 @@
 import * as ts from "web-tree-sitter"
 
+class CachedResponse extends Response
+{
+	override async arrayBuffer(): Promise<ArrayBuffer>
+	{
+		const map = cache.db.fetch.arrayBuffer
+		var result = map.get(this)
+		if (result === undefined)
+		{
+			result = await super.arrayBuffer()
+			map.set(this, result)
+		}
+		return result
+	}
+
+	override get   body():     ReadableStream<Uint8Array> | null { throw Error("NYI") }
+	override async blob():     Promise<Blob>                     { throw Error("NYI") }
+	override async formData(): Promise<FormData>                 { throw Error("NYI") }
+	override async json():     Promise<any>                      { throw Error("NYI") }
+	override async text():     Promise<string>                   { throw Error("NYI") }
+}
+
+class Cache
+{
+	db = {
+		fetch: {
+			response:    new Map<string, CachedResponse>(),
+			body:        new Map<CachedResponse, ReadableStream<Uint8Array> | null>(),
+			arrayBuffer: new Map<CachedResponse, ArrayBuffer>(),
+		}
+	}
+
+	async fetch(url: string): Promise<Response>
+	{
+		const map = this.db.fetch.response
+		var result = map.get(url)
+		if (result === undefined)
+		{
+			const response = await fetch(url)
+			result = Object.setPrototypeOf(response, CachedResponse.prototype) as CachedResponse
+			map.set(url, result)
+		}
+		return result
+	}
+}
+
 export class Position
 {
 	constructor(
@@ -222,7 +267,7 @@ async function parseDocument(ctx: Context): Promise<Parse|undefined>
 		try
 		{
 			await ts.Parser.init()
-			const response : Response    = await fetch(languageData.grammar)
+			const response : Response    = await cache.fetch(languageData.grammar)
 			const wasm     : ArrayBuffer = await response.arrayBuffer()
 			const language : ts.Language = await ts.Language.load(new Uint8Array(wasm))
 			const parser   : ts.Parser   = new ts.Parser().setLanguage(language)
@@ -587,6 +632,8 @@ export async function wrap_text(ctx: Context): Promise<string[]>
 	return wrapped
 }
 
+const cache = new Cache()
+
 // TODO: lua, powershell, toml, yaml, xml, markdown
 const languages: Record<string, LanguageData> = {
 	c: {
@@ -657,7 +704,6 @@ const languages: Record<string, LanguageData> = {
 // Per-line regex
 
 // TODO: Cache parser
-// TODO: Cache fetch results
 // TODO: Cache language results
 // TODO: Cache parse results
 // TODO: Cache query results
