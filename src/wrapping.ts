@@ -448,7 +448,10 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 
 function tokenizeBlocks(ctx: Context, blocks: Block[])
 {
-	const re = /\S+/g
+	const indentRe  = /^\s*/g
+	const prefixRe = /[^\w\s]+/g
+	const tokenRe  = /\S+/g
+	const suffixRe = /\w+/g
 
 	for (const block of blocks)
 	{
@@ -456,50 +459,96 @@ function tokenizeBlocks(ctx: Context, blocks: Block[])
 		{
 			case BlockType.blockComment:
 			case BlockType.lineComment:
-			case BlockType.prose:
 			{
+				// TODO: Refer to previous node when trailing line comment
+
 				for (var iLine = block.range.start.line; iLine <= block.range.end.line; iLine++)
 				{
 					const line  : TextLine = ctx.getLine(iLine)
 					const rLine : Range    = block.range.intersection(line.range)!
 
-					re.lastIndex = rLine.start.character
-					var tokenType = TokenType.prefix
-
 					var match : RegExpExecArray | null
-					while ((match = re.exec(line.text)) && match.index < rLine.end.character)
-					{
-						// TODO: Refer to previous node when trailing line comment
-						if (block.tokens.length == 0)
-						{
-							block.lineInfos.push({
-								iLine:  iLine,
-								iToken: 0,
-								indent: {
-									type:  TokenType.indent,
-									iLine: iLine,
-									begin: 0,
-									end:   match.index,
-								},
-							})
-						}
+					var iChar = 0
 
-						block.tokenLen += match[0].length
+					// Track indentation for later reference
+					indentRe.lastIndex = iChar
+					match = indentRe.exec(line.text)
+					{
+						iChar = indentRe.lastIndex
+						block.lineInfos.push({
+							iLine:  iLine,
+							iToken: block.tokens.length,
+							indent: {
+								type:  TokenType.indent,
+								iLine: iLine,
+								begin: match!.index,
+								end:   indentRe.lastIndex,
+							},
+						})
+					}
+
+					// Split first token if it's prefix + first word (with no space)
+					prefixRe.lastIndex = Math.max(iChar, rLine.start.character)
+					if ((match = prefixRe.exec(line.text)) && match.index < rLine.end.character)
+					{
+						iChar = prefixRe.lastIndex
 						block.tokens.push({
-							type:  tokenType,
+							type:  TokenType.prefix,
 							iLine: iLine,
 							begin: match.index,
-							end:   match.index + match[0].length,
+							end:   prefixRe.lastIndex,
 						})
+					}
 
-						tokenType = TokenType.token
+					// Regular tokens
+					tokenRe.lastIndex = iChar
+					while ((match = tokenRe.exec(line.text)) && match.index < rLine.end.character)
+					{
+						block.tokenLen += match[0].length
+						block.tokens.push({
+							type:  TokenType.token,
+							iLine: iLine,
+							begin: match.index,
+							end:   tokenRe.lastIndex,
+						})
 					}
 				}
 
-				if (block.type == BlockType.blockComment && block.tokens.length)
-					block.tokens.at(-1)!.type = TokenType.suffix
+				// Split last token if it's last word + suffix (with no space)
+				if (block.type == BlockType.blockComment)
+				{
+					assert(block.tokens.length)
+
+					const iLine = block.range.end.line
+					const line  : TextLine = ctx.getLine(iLine)
+					const token = block.tokens.at(-1)!
+
+					var match : RegExpExecArray | null
+
+					suffixRe.lastIndex = token.begin
+					if ((match = suffixRe.exec(line.text)))
+					{
+						const suffixLen = token.end - tokenRe.lastIndex
+						token.end -= suffixLen
+						block.tokenLen -= suffixLen
+
+						block.tokens.push({
+							type:  TokenType.suffix,
+							iLine: iLine,
+							begin: tokenRe.lastIndex,
+							end:   tokenRe.lastIndex + suffixLen,
+						})
+					}
+					else
+					{
+						token.type = TokenType.suffix
+					}
+				}
 				break
 			}
+
+			case BlockType.prose:
+				break
 		}
 	}
 }

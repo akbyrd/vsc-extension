@@ -93,8 +93,8 @@ describe("wrap_text", () =>
 	test("tail-space - 1s",                 "// asd ",    "// asd")
 	test("tail-space - 1t",                 "// asd\t",   "// asd")
 	test("tail-space - 1s 1t 1s",           "// asd \t ", "// asd")
-	test("tail-space/indent - 1s / 0s",     "\t//asd ",   "\t// asd")
-	test("tail-space/head-space - 1s / 0s", "//asd ",    "// asd")
+	test("tail-space/indent - 1s / 1t",     "\t// asd ",  "\t// asd")
+	test("tail-space/head-space - 1s / 0s", "//asd ",     "// asd")
 
 	// Test custom prefix
 	test("prefix - 2s",                 "// asd",    "// asd")
@@ -110,7 +110,7 @@ describe("wrap_text", () =>
 	// Test trailing
 	test("trailing - 1l",                 "0; // asd",         " // asd")
 	test("trailing - 2l",                 "0; // asd\n// asd", [" // asd", "// asd"])
-	test("trailing/indent - 1l / 0s",     "0;//asd",           " // asd")
+	test("trailing/indent - 1l / 0s",     "0;// asd",          " // asd")
 	test("trailing/head-space - 1l / 0s", "0; //asd",          " // asd")
 	test("trailing/tail-space - 1l / 1s", "0; // asd ",        " // asd")
 	test("trailing/prefix - 1l / 3s",     "0; /// asd",        " /// asd")
