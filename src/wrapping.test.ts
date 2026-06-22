@@ -137,6 +137,23 @@ describe("wrap_text", () =>
 //*/
 
 	// Test preserved newlines
+	test("newline - 1e 0s",                   "//",                         "//") // TODO: What do we want for this case?
+	test("newline - 1e 1s",                   "// ",                        "//") // TODO: What do we want for this case?
+	test("newline - 2e",                      "//\n//",                     "//") // TODO: What do we want for this case?
+	test("newline - 1l 2e 1l",                "// asd\n//\n//\n// asd",     "// asd\n//\n// asd")
+	test("newline - 1e 1l",                   "//\n// asd",                 "// asd")
+	test("newline - 1l 1e",                   "// asd\n//",                 "// asd")
+	test("newline - 1l 1e 1s 1l",             "// asd\n// \n// asd",        "// asd\n//\n// asd")
+	test("newline - 1l 1e 4s 1l",             "// asd\n//    \n// asd",     "// asd\n//\n// asd")
+	test("newline - 1l 1e 1t 1l",             "// asd\n//\t\n// asd",       "// asd\n//\n// asd")
+	test("newline/multiline - 2l 1e 1l / 2l", "// asd\n// asd\n//\n// asd", "// asd asd\n//\n// asd")
+	test("newline/indent - 1l 1e 1l / 1t",    "\t// asd\n\t//\n\t// asd",   "\t// asd\n\t//\n\t// asd")
+	test("newline/head-space - 1l 1e 1l / 0s", "//asd\n//\n//asd",           "// asd\n//\n// asd")
+	test("newline/tail-space - 1l 1e 1l / 1s", "// asd \n// \n// asd ",      "// asd\n//\n// asd")
+	test("newline/prefix - 1l 1e 1l / 3s",     "/// asd\n///\n/// asd",      "/// asd\n///\n/// asd")
+	test("newline/trailing - 1l 1e 1l / 1l",   "0; // asd\n//\n// asd",      [ " // asd", "// asd" ])
+	test("newline/narrow - 1l 1e 1l / 2l",     "// asd asd\n//\n// asd asd", "// asd\n// asd\n//\n// asd\n// asd", { lineWidth: 0 })
+
 	// Test preserved bullets
 	// Test preserved doxygen
 	// Test indented bullets

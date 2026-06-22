@@ -276,6 +276,7 @@ async function fold_definitions(textEditor: vscode.TextEditor, foldTypes: boolea
 
 function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit)
 {
+	// TODO: Share statusBarMessage
 	function onError(s: string)
 	{
 		console.log(s)
