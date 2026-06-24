@@ -276,6 +276,10 @@ async function fold_definitions(textEditor: vscode.TextEditor, foldTypes: boolea
 
 function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit)
 {
+	// NOTE: Edits may not overlap. For example, you cannot remove a newline character and place a
+	// new one at the same location. This means we can't use a naive approach that unwraps the
+	// block and then re-wraps it.
+
 	// TODO: Share statusBarMessage
 	function onError(s: string)
 	{

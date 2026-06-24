@@ -76,7 +76,8 @@ describe("wrap_text", () =>
 	test("indent - 3s 1t",          "   \t// asd",       "\t// asd")
 	test("indent - 4s 1t",          "    \t// asd",      "\t\t// asd")
 	test("indent - 5s 1t",          "     \t// asd",     "\t\t// asd")
-	test("indent - 2s 1t 1s 1t 1s", "  \t \t \t // asd", "\t\t\t\t// asd")
+	test("indent - 2s 1t 1s 1t 1s", "  \t \t \t // asd", "\t\t\t// asd")
+	test("indent - 2s 1t 1s 1t 4s", "  \t \t \t    // asd", "\t\t\t\t// asd")
 
 	// Test whitespace at beginning of content (after prefix)
 	test("head-space - 0s",             "//asd",      "// asd")
@@ -134,12 +135,8 @@ describe("wrap_text", () =>
 	test("narrow/tail-space - 2l / 1s", "// asd asd ",             "// asd\n// asd", { lineWidth: 0 })
 	test("narrow/prefix - 2l / 2s",     "/// asd asd",             "/// asd\n/// asd", { lineWidth: 0 })
 	test("narrow/trailing - 2l / 1l",   "0; // asd",               " // asd", { lineWidth: 0 })
-//*/
 
 	// Test preserved newlines
-	test("newline - 1e 0s",                   "//",                         "//") // TODO: What do we want for this case?
-	test("newline - 1e 1s",                   "// ",                        "//") // TODO: What do we want for this case?
-	test("newline - 2e",                      "//\n//",                     "//") // TODO: What do we want for this case?
 	test("newline - 1l 2e 1l",                "// asd\n//\n//\n// asd",     "// asd\n//\n// asd")
 	test("newline - 1e 1l",                   "//\n// asd",                 "// asd")
 	test("newline - 1l 1e",                   "// asd\n//",                 "// asd")
@@ -153,10 +150,48 @@ describe("wrap_text", () =>
 	test("newline/prefix - 1l 1e 1l / 3s",     "/// asd\n///\n/// asd",      "/// asd\n///\n/// asd")
 	test("newline/trailing - 1l 1e 1l / 1l",   "0; // asd\n//\n// asd",      [ " // asd", "// asd" ])
 	test("newline/narrow - 1l 1e 1l / 2l",     "// asd asd\n//\n// asd asd", "// asd\n// asd\n//\n// asd\n// asd", { lineWidth: 0 })
+//*/
 
 	// Test preserved bullets
+	test("bullet - 1a 1s",                 "// * asd",                     "// * asd")
+	test("bullet - 1a 2s",                 "//  * asd",                    "//  * asd")
+	test("bullet - 1d 2s",                 "//  - asd",                    "//  - asd")
+	test("bullet - 1nd 2s",                "//  1. asd",                   "//  1. asd")
+	test("bullet - 1np 2s",                "//  1) asd",                   "//  1) asd")
+	test("bullet - 1a 3s",                 "//   * asd",                   "//   * asd")
+	test("bullet - 1a 4s",                 "//    * asd",                  "//    * asd")
+	test("bullet - 1a 5s",                 "//     * asd",                 "//     * asd")
+	test("bullet - 1a 1t",                 "//\t* asd",                    "//  * asd")
+	test("bullet - 1a 1s 1t",              "// \t* asd",                   "//  * asd")
+	test("bullet/multiline - 1a / 1l 1l",  "// asd\n//  * asd\n// asd",    "// asd\n//  * asd asd") // TODO: Should line 3 be part of the bullet?
+	test("bullet/indent - 1a / 1t",        "\t//  * asd",                  "\t//  * asd")
+	test("bullet/head-space - 1a / 0s",    "//* asd",                      "//* asd")
+	test("bullet/head-space - 1dn / 0s",   "//1. asd",                      "// 1. asd")
+	test("bullet/tail-space - 1a / 1s",    "//  * asd ",                   "//  * asd")
+	test("bullet/prefix - 1a / 3s",        "///  * asd",                   "///  * asd")
+	test("bullet/trailing - 1a / 1l",      "0; //  * asd",                 " //  * asd")
+	test("bullet/narrow - 1a / 1l",        "//  * asd",                    "//  * asd", { lineWidth: 0 })
+	test("bullet/narrow - 1a / 2l",        "//  * asd asd",                "//  * asd\n//    asd", { lineWidth: 0 })
+	test("bullet/newline - 1a 1a / 1e",    "//  * asd\n//\n//  * asd",     "//  * asd\n//\n//  * asd")
+	// TODO: Handle sequential bullets
+	// TODO: Handle nested bullets
+
 	// Test preserved doxygen
-	// Test indented bullets
+
+	// Test empty
+	//test("empty - ",            "//",         "")
+	//test("empty/multiline - ",  "//\n//",     "")
+	//test("empty/indent - ",     "\t//\n\t//", "")
+	//test("empty/head-space - ", "// ",        "")
+	//test("empty/tail-space - ", "// ",        "")
+	//test("empty/prefix - ",     "///",        "")
+	//test("empty/trailing - ",   "0; //",      "")
+	//test("empty/narrow - ",     "//",         "", { lineWidth: 0 })
+	//test("empty/bullet - ",     "// *",       "")
+	//test("empty/bullet - ",     "// * ",      "")
+	//test("empty/bullet - ",     "//\n// * ",  "")
+	//test("empty/newline - ",    "//\n//\n//", "")
+	//test("empty/doxygen - ",    "",           "")
 
 
 
@@ -176,15 +211,3 @@ describe("wrap_text", () =>
 	// Test preserved bullets
 	// Test preserved doxygen
 })
-
-// TODO: Can we generate tests?
-// indent   - [0, 3] indents, [-1, 1] space error, combinatoric space or tab
-// space    - [0, 4] spaces, [0, 1] tabs, combinatoric space or tab
-// type     - line, block
-// prefix   - { //, ///, //*, //<, //!, }, { /*, /**, /*<, /*! }, { *, **, *<, *! }
-// suffix   - { */, **/, <*/, !*/}
-// lines    - [1, 3]
-// newlines - { \n \n\t \n  }
-// bullets  - { * - 1. 1) }
-// doxygen  - { @\w }
-
