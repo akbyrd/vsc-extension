@@ -147,16 +147,17 @@ type LineInfo = {
 	suffix      : Token,
 	indentWidth : number, // TODO: Move to block
 	alignWidth  : number,
+	runLength   : number,
 }
 
 type Block = {
 	type       : BlockType,
 	range      : Range,
 	languageId : string
+	isTrailing : boolean,
 	lineInfos  : LineInfo[],
 	prefixes   : PrefixSet,
 	tokens     : Token[],
-	contentLen : number,
 }
 
 function toPosition(p: ts.Point): Position
@@ -330,10 +331,10 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 						type:       BlockType.lineComment,
 						range:      new Range(start, end),
 						languageId: ctx.languageId,
+						isTrailing: isTrailing,
 						lineInfos:  [],
 						prefixes:   [ "", "", "" ],
 						tokens:     [],
-						contentLen: 0,
 					});
 				}
 				else
@@ -342,10 +343,10 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 						type:       BlockType.blockComment,
 						range:      toRange(capture.node),
 						languageId: ctx.languageId,
+						isTrailing: false,
 						lineInfos:  [],
 						prefixes:   [ "", "", "" ],
 						tokens:     [],
-						contentLen: 0,
 					});
 				}
 			}
@@ -359,10 +360,10 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 				type:       BlockType.prose,
 				range:      selection,
 				languageId: ctx.languageId,
+				isTrailing: false,
 				lineInfos:  [],
 				prefixes:   ["", "", ""],
 				tokens:     [],
-				contentLen: 0,
 			});
 		}
 	}
@@ -370,8 +371,6 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 	return blocks
 }
 
-// Responsible for very simple tokenization.
-// Finds indentation, prefix, bullet, content, and suffix.
 function tokenizeBlock(ctx: Context, block: Block)
 {
 	const indentRe = /\s*/g
@@ -405,6 +404,7 @@ function tokenizeBlock(ctx: Context, block: Block)
 					suffix:      { begin: 0, end: 0 },
 					indentWidth: 0,
 					alignWidth:  0,
+					runLength:   0,
 				})
 				const lineInfo = block.lineInfos.at(-1)!
 
@@ -471,7 +471,6 @@ function tokenizeBlock(ctx: Context, block: Block)
 				while ((match = tokenRe.exec(line.text)) && match.index < rLine.end.character)
 				{
 					lineInfo.tokenEnd++
-					block.contentLen += match[0].length
 					block.tokens.push({
 						begin: match.index,
 						end:   tokenRe.lastIndex,
@@ -494,7 +493,6 @@ function tokenizeBlock(ctx: Context, block: Block)
 				{
 					const suffixLen = match[0].length
 					token.end -= suffixLen
-					block.contentLen -= suffixLen
 
 					lineInfo!.suffix = {
 						begin: match.index,
@@ -510,16 +508,20 @@ function tokenizeBlock(ctx: Context, block: Block)
 	}
 }
 
-// Responsible for analysis of input text.
-// Calculates indentation and alignment.
-// Finds blank lines, bullet continuations, custom prefix/suffix.
 function analyzeBlock(ctx: Context, block: Block)
 {
 	// Detect indentation
 	{
 		const lineInfo = block.lineInfos[0]
-		lineInfo.indentWidth = consumeIndent(lineInfo.text, 0, 0, ctx.tabSize)
-		lineInfo.indentWidth = Math.floor(lineInfo.indentWidth / ctx.tabSize) * ctx.tabSize
+		if (block.isTrailing)
+		{
+			lineInfo.indentWidth = 1
+		}
+		else
+		{
+			lineInfo.indentWidth = consumeIndent(lineInfo.text, 0, 0, ctx.tabSize)
+			lineInfo.indentWidth = Math.floor(lineInfo.indentWidth / ctx.tabSize) * ctx.tabSize
+		}
 	}
 
 	// Detect blank lines
@@ -566,25 +568,23 @@ function analyzeBlock(ctx: Context, block: Block)
 				const width = lineInfo.indentWidth + (lineInfo.prefix.end - lineInfo.prefix.begin)
 				const begin = lineInfo.prefix.end
 				const align = consumeIndent(lineInfo.text, begin, width, ctx.tabSize)
-				lineInfo.alignWidth = Math.max(0, align - 1)
+				lineInfo.alignWidth = Math.max(1, align)
 			}
 			else
 			{
 				const offset = lineInfo.indentWidth
 				const align  = consumeIndent(lineInfo.text, 0, 0, ctx.tabSize)
-				lineInfo.alignWidth = Math.max(0, align - offset - 1)
+				lineInfo.alignWidth = Math.max(1, align - offset)
 			}
 
-			const bulletWidth = lineInfo.bullet.end - lineInfo.bullet.begin
 			for (i = i + 1; i < block.lineInfos.length; i++)
 			{
 				const nextLineInfo = block.lineInfos[i]
 
-				if (nextLineInfo.type == LineType.bullet || nextLineInfo.type == LineType.blank)
+				if (nextLineInfo.type == LineType.blank)
 					break
 
 				nextLineInfo.type = LineType.bullet
-				nextLineInfo.alignWidth += lineInfo.alignWidth + bulletWidth
 			}
 		}
 	}
@@ -634,11 +634,21 @@ function analyzeBlock(ctx: Context, block: Block)
 			break
 		}
 	}
+
+	// Calculate run length
+	var runLength = 0
+	var lastType = LineType.null
+	for (const lineInfo of block.lineInfos)
+	{
+		if (lineInfo.type != lastType)
+		{
+			runLength = 0
+			lastType = lineInfo.type
+		}
+		lineInfo.runLength = runLength++
+	}
 }
 
-// Responsible for outputting text.
-// Applies alignment.
-// Skips sequential blank lines
 function wrapBlock(ctx: Context, block: Block): string
 {
 	// NOTE: Whitespace and line prefixes are normalized. This means:
@@ -648,85 +658,68 @@ function wrapBlock(ctx: Context, block: Block): string
 	// * Line prefixes added to continuation lines of block comments
 	// * Whitespace between content tokens is replaced with a single space
 
-	// TODO: This needs another simplification pass
-	// Try to remove special bullet handling
-	// Track first line of run (for alignment)
 	const lines : string[] = []
+
+	const indentWidth = block.lineInfos[0].indentWidth
+	const indent      = (ctx.useSpaces || block.isTrailing) ? " ".repeat(indentWidth) : "\t".repeat(indentWidth / ctx.tabSize)
+	const lineWidth   = block.isTrailing ? Number.POSITIVE_INFINITY : ctx.lineWidth
+
+	var prefix  = block.prefixes[0]
+	var leader  = ""
+	var content = ""
+
+	function flush()
 	{
-		const isTrailing  = block.range.start.character != 0
-		const indentWidth = block.lineInfos[0].indentWidth
-		const maybeIndent = ctx.useSpaces ? " ".repeat(indentWidth) : "\t".repeat(indentWidth / ctx.tabSize)
-		const indent      = isTrailing ? " " : maybeIndent
-		const lineWidth   = isTrailing ? Number.POSITIVE_INFINITY : ctx.lineWidth
-
-		var prefix    = block.prefixes[0]
-		var lineText  = `${indent}${prefix}`
-		var isFirst   = true
-		var lastType  = LineType.null
-		var lastAlign = 0
-
-		function finishLine(type: LineType)
+		if (leader)
 		{
-			const isBlockContinue = lastType == LineType.bullet && type == LineType.bullet
-			const align = isBlockContinue ? " ".repeat(lastAlign) : ""
+			lines.push(leader + content)
 
-			lines.push(lineText)
-			prefix   = block.prefixes[1]
-			lineText = `${indent}${prefix}${align}`
-			isFirst  = true
-			lastType = type
+			prefix  = block.prefixes[1]
+			leader  = ""
+			content = ""
+		}
+	}
+
+	for (const lineInfo of block.lineInfos)
+	{
+		if (lineInfo.type == LineType.skip)
+			continue
+
+		if (lineInfo.runLength == 0)
+		{
+			flush()
+			const align  = " ".repeat(lineInfo.alignWidth)
+			const bullet = lineInfo.text.slice(lineInfo.bullet.begin, lineInfo.bullet.end)
+			leader = `${indent}${prefix}${align}${bullet}`
 		}
 
-		for (const lineInfo of block.lineInfos)
+		for (var i = lineInfo.tokenBegin; i < lineInfo.tokenEnd; i++)
 		{
-			// TODO: Can we get rid of skip?
-			if (lineInfo.type == LineType.skip)
-				continue
+			const token    = block.tokens[i]
+			const tokenLen = token.end - token.begin
+			const doesFit  = leader.length + content.length + tokenLen + 1 <= lineWidth
+			const overflow = content.length && !doesFit
 
-			// TODO: Broken
-			const isFirstOfType = lineInfo.type != lastType
-			if (isFirstOfType && lineInfo.tokenBegin != 0)
+			if (overflow)
 			{
-				finishLine(lineInfo.type)
-				lastAlign = 0
-			}
-			// TODO: This is jank as fuck
-			lastType = lineInfo.type
+				const alignWidth = leader.length - indent.length - prefix.length
+				const align      = " ".repeat(alignWidth)
 
-			if (lineInfo.type == LineType.bullet)
-			{
-				if (isFirstOfType)
-				{
-					const align  = " ".repeat(lineInfo.alignWidth)
-					const bullet = lineInfo.text.slice(lineInfo.bullet.begin, lineInfo.bullet.end)
-					lineText += ` ${align}${bullet}`
-					lastAlign = lineInfo.alignWidth + bullet.length + 1
-				}
+				flush()
+				leader = `${indent}${prefix}${align}`
 			}
 
-			// Consume tokens to fill line
-			for (var i = lineInfo.tokenBegin; i < lineInfo.tokenEnd; i++)
-			{
-				const token   = block.tokens[i]
-				const width   = token.end - token.begin
-				const doesFit = lineText.length + width + 1 <= lineWidth
-				if (!isFirst && !doesFit)
-					finishLine(lineInfo.type)
-
-				lineText += ` ${lineInfo.text.slice(token.begin, token.end)}`
-				isFirst = false
-			}
+			const tokenStr = lineInfo.text.slice(token.begin, token.end)
+			content += ` ${tokenStr}`
 		}
+	}
+	flush()
 
-		// TODO: Probably wrong
-		finishLine(LineType.null)
-
-		if (block.type == BlockType.blockComment)
-		{
-			const suffix = block.prefixes[2]
-			const line   = `${indent}${suffix}`
-			lines.push(line)
-		}
+	if (block.type == BlockType.blockComment)
+	{
+		const suffix = block.prefixes[2]
+		const line   = `${indent}${suffix}`
+		lines.push(line)
 	}
 
 	const result = lines.join('\n')
