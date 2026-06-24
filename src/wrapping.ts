@@ -577,11 +577,11 @@ function analyzeBlock(ctx: Context, block: Block)
 				lineInfo.alignWidth = Math.max(1, align - offset)
 			}
 
-			for (i = i + 1; i < block.lineInfos.length; i++)
+			for (; i < block.lineInfos.length - 1; i++)
 			{
-				const nextLineInfo = block.lineInfos[i]
+				const nextLineInfo = block.lineInfos[i + 1]
 
-				if (nextLineInfo.type == LineType.blank)
+				if (nextLineInfo.type == LineType.blank || nextLineInfo.type == LineType.bullet)
 					break
 
 				nextLineInfo.type = LineType.bullet
@@ -640,7 +640,8 @@ function analyzeBlock(ctx: Context, block: Block)
 	var lastType = LineType.null
 	for (const lineInfo of block.lineInfos)
 	{
-		if (lineInfo.type != lastType)
+		const isBulletContinuation = lineInfo.bullet.end > lineInfo.bullet.begin
+		if (lineInfo.type != lastType || isBulletContinuation)
 		{
 			runLength = 0
 			lastType = lineInfo.type
@@ -809,17 +810,14 @@ const languages: Record<string, LanguageData> = {
 // TODO: Change tokenEnd to tokenCount
 // TODO: Split indentation and custom whitespace
 // TODO: Change customPrefix slice to a lazy resolve
-// TODO: lineWidth does not account for indentation width
 // TODO: Cache parser
 // TODO: Cache language results
 // TODO: Cache parse results
 // TODO: Cache query results
 // TODO: Move prefixes into the cache
-// TODO: Ignore embedded single line comments
 // TODO: Apply edits in vscode
 // TODO: Better exporting from this file
 // TODO: Have AI implement from scratch and compare
-// ----
 // TODO: Handle overlapping queries (due to character expand)
 // TODO: Improve plaintext support
 // TODO: Figure out how to handle code in markdown / other embedded languages

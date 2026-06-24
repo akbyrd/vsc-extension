@@ -150,7 +150,6 @@ describe("wrap_text", () =>
 	test("newline/prefix - 1l 1e 1l / 3s",     "/// asd\n///\n/// asd",      "/// asd\n///\n/// asd")
 	test("newline/trailing - 1l 1e 1l / 1l",   "0; // asd\n//\n// asd",      [ " // asd", "// asd" ])
 	test("newline/narrow - 1l 1e 1l / 2l",     "// asd asd\n//\n// asd asd", "// asd\n// asd\n//\n// asd\n// asd", { lineWidth: 0 })
-//*/
 
 	// Test preserved bullets
 	test("bullet - 1a 1s",                 "// * asd",                     "// * asd")
@@ -163,7 +162,9 @@ describe("wrap_text", () =>
 	test("bullet - 1a 5s",                 "//     * asd",                 "//     * asd")
 	test("bullet - 1a 1t",                 "//\t* asd",                    "//  * asd")
 	test("bullet - 1a 1s 1t",              "// \t* asd",                   "//  * asd")
-	test("bullet/multiline - 1a / 1l 1l",  "// asd\n//  * asd\n// asd",    "// asd\n//  * asd asd") // TODO: Should line 3 be part of the bullet?
+	test("bullet - 1a 1a",                 "//  * asd\n//  * asd",         "//  * asd\n//  * asd")
+	test("bullet - 1a 1an",                "//  * asd\n//    * asd",       "//  * asd\n//    * asd")
+	test("bullet/multiline - 1a / 1l 1l",  "// asd\n//  * asd\n// asd",    "// asd\n//  * asd asd")
 	test("bullet/indent - 1a / 1t",        "\t//  * asd",                  "\t//  * asd")
 	test("bullet/head-space - 1a / 0s",    "//* asd",                      "//* asd")
 	test("bullet/head-space - 1dn / 0s",   "//1. asd",                      "// 1. asd")
@@ -173,8 +174,7 @@ describe("wrap_text", () =>
 	test("bullet/narrow - 1a / 1l",        "//  * asd",                    "//  * asd", { lineWidth: 0 })
 	test("bullet/narrow - 1a / 2l",        "//  * asd asd",                "//  * asd\n//    asd", { lineWidth: 0 })
 	test("bullet/newline - 1a 1a / 1e",    "//  * asd\n//\n//  * asd",     "//  * asd\n//\n//  * asd")
-	// TODO: Handle sequential bullets
-	// TODO: Handle nested bullets
+//*/
 
 	// Test preserved doxygen
 
