@@ -373,11 +373,13 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 
 function tokenizeBlock(ctx: Context, block: Block)
 {
-	const indentRe = /\s*/g
-	const prefixRe = /[^\w\s]+/g
-	const bulletRe = /[\*-]|\d+[\(\.)]/g
-	const tokenRe  = /\S+/g
-	const suffixRe = /[^\w\s]+$/g
+	const indentRe  = /\s*/g
+	const prefixRe  = /[^\w\s@\\]+/g
+	const doxygenRe = /(?!(?:endlink|anchor|link|cite|ref|em|[abcenp])\b|f\$|\W)\S+/y
+	const bulletRe  = /[\*-]|\d+[\)\.]/g
+	const tokenRe   = /\S+/g
+	const suffixRe  = /[^\w\s]+$/g // TODO: $ is probably wrong when there's text after the comment
+	const doxygenLeaders = [ "@".charCodeAt(0), "\\".charCodeAt(0) ]
 
 	switch (block.type)
 	{
@@ -440,6 +442,7 @@ function tokenizeBlock(ctx: Context, block: Block)
 
 				// TODO: Split indentation and align when there's no prefix
 				// TODO: Maybe this should be in analyzeBlock?
+				// TODO: How do we limit each of these to the start of the sub string? (use the y suffix)
 
 				// Align
 				indentRe.lastIndex = iChar
@@ -452,17 +455,34 @@ function tokenizeBlock(ctx: Context, block: Block)
 					}
 				}
 
-				// TODO: How do we limit this to the start of the sub string?
+				// Doxygen command (split when attached to first token)
+				const nextChar = line.text.charCodeAt(iChar)
+				if (doxygenLeaders.includes(nextChar))
+				{
+					doxygenRe.lastIndex = iChar + 1
+					if ((match = doxygenRe.exec(line.text)) && match.index < rLine.end.character)
+					{
+						iChar = doxygenRe.lastIndex
+						lineInfo.type = LineType.bullet
+						lineInfo.bullet = {
+							begin: match.index - 1,
+							end:   doxygenRe.lastIndex,
+						}
+					}
+				}
 
 				// Bullet (split when attached to first token)
-				bulletRe.lastIndex = iChar
-				if ((match = bulletRe.exec(line.text)) && match.index < rLine.end.character)
+				if (lineInfo.type != LineType.bullet)
 				{
-					iChar = bulletRe.lastIndex
-					lineInfo.type = LineType.bullet
-					lineInfo.bullet = {
-						begin: match.index,
-						end:   bulletRe.lastIndex,
+					bulletRe.lastIndex = iChar
+					if ((match = bulletRe.exec(line.text)) && match.index < rLine.end.character)
+					{
+						iChar = bulletRe.lastIndex
+						lineInfo.type = LineType.bullet
+						lineInfo.bullet = {
+							begin: match.index,
+							end:   bulletRe.lastIndex,
+						}
 					}
 				}
 

@@ -58,7 +58,7 @@ function test(name: string, original: string, expected: string | string[], overr
 
 describe("wrap_text", () =>
 {
-//*
+/*
 	// Line Comments
 
 	// Test indentation
@@ -167,7 +167,7 @@ describe("wrap_text", () =>
 	test("bullet/multiline - 1a / 1l 1l",  "// asd\n//  * asd\n// asd",    "// asd\n//  * asd asd")
 	test("bullet/indent - 1a / 1t",        "\t//  * asd",                  "\t//  * asd")
 	test("bullet/head-space - 1a / 0s",    "//* asd",                      "//* asd")
-	test("bullet/head-space - 1dn / 0s",   "//1. asd",                      "// 1. asd")
+	test("bullet/head-space - 1dn / 0s",   "//1. asd",                     "// 1. asd")
 	test("bullet/tail-space - 1a / 1s",    "//  * asd ",                   "//  * asd")
 	test("bullet/prefix - 1a / 3s",        "///  * asd",                   "///  * asd")
 	test("bullet/trailing - 1a / 1l",      "0; //  * asd",                 " //  * asd")
@@ -177,21 +177,40 @@ describe("wrap_text", () =>
 //*/
 
 	// Test preserved doxygen
+	test("doxygen - 1a",                     "// asd\n// @see asd",          "// asd\n// @see asd")
+	test("doxygen - 1b",                     "// asd\n// \\see asd",         "// asd\n// \\see asd")
+	test("doxygen - 2l ref",                 "// asd\n// @ref asd",          "// asd @ref asd")
+	test("doxygen - 2l em",                  "// asd\n// @em asd",           "// asd @em asd")
+	test("doxygen - 2l a",                   "// asd\n// @a asd",            "// asd @a asd")
+	test("doxygen - 2l f$",                  "// asd\n// @f$ asd",           "// asd @f$ asd")
+	test("doxygen - 2l $",                   "// asd\n// @$ asd",            "// asd @$ asd")
+	test("doxygen - 2l ::",                  "// asd\n// @:: asd",           "// asd @:: asd")
+	test("doxygen/multiline - 2s / 2l",      "// @see asd\n// @see asd",     "// @see asd\n// @see asd")
+	test("doxygen/multiline - 2l / 2l",      "// @ref asd\n// @ref asd",     "// @ref asd @ref asd")
+	test("doxygen/indent - 1l / 1t",         "\t// @see asd",                "\t// @see asd")
+	test("doxygen/head-space - 1a / 0s",     "//@ref asd",                   "// @ref asd")
+	test("doxygen/head-space - 1a 1l / 0s ", "//@ref\n// asd",               "// @ref asd")
+	test("doxygen/tail-space - 1l / 1s",     "// @ref asd ",                 "// @ref asd")
+	test("doxygen/prefix - 1l / 2s",         "/// @ref asd",                 "/// @ref asd")
+	test("doxygen/trailing - 1l / 1l",       "0; // @ref asd",               " // @ref asd")
+	test("doxygen/narrow - 1l / 2l",         "// @param asd asd",            "// @param asd\n//        asd", { lineWidth: 0 })
+	test("doxygen/newline - 2l / 1e",        "// @ref asd\n//\n// @ref asd", "// @ref asd\n//\n// @ref asd")
+	test("doxygen/bullet - 1l / 1a",         "// * @see asd",                "// * @see asd")
 
 	// Test empty
-	//test("empty - ",            "//",         "")
-	//test("empty/multiline - ",  "//\n//",     "")
-	//test("empty/indent - ",     "\t//\n\t//", "")
-	//test("empty/head-space - ", "// ",        "")
-	//test("empty/tail-space - ", "// ",        "")
-	//test("empty/prefix - ",     "///",        "")
-	//test("empty/trailing - ",   "0; //",      "")
-	//test("empty/narrow - ",     "//",         "", { lineWidth: 0 })
-	//test("empty/bullet - ",     "// *",       "")
-	//test("empty/bullet - ",     "// * ",      "")
-	//test("empty/bullet - ",     "//\n// * ",  "")
-	//test("empty/newline - ",    "//\n//\n//", "")
-	//test("empty/doxygen - ",    "",           "")
+	//test("empty - ",            "//",          "")
+	//test("empty/multiline - ",  "//\n//",      "")
+	//test("empty/indent - ",     "\t//\n\t//",  "")
+	//test("empty/head-space - ", "// ",         "")
+	//test("empty/tail-space - ", "// ",         "")
+	//test("empty/prefix - ",     "///",         "")
+	//test("empty/trailing - ",   "0; //",       "")
+	//test("empty/narrow - ",     "//",          "", { lineWidth: 0 })
+	//test("empty/bullet - ",     "// *",        "")
+	//test("empty/bullet - ",     "// * ",       "")
+	//test("empty/bullet - ",     "//\n// * ",   "")
+	//test("empty/newline - ",    "//\n//\n//",  "")
+	//test("empty/doxygen - ",    "// @endcode", "// @endcode")
 
 
 
