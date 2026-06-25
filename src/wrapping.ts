@@ -133,7 +133,6 @@ enum LineType
 	skip,
 	blank,
 	bullet,
-	doxygen,
 }
 
 type LineInfo = {
@@ -149,6 +148,7 @@ type LineInfo = {
 	indentWidth : number, // TODO: Move to block
 	alignWidth  : number,
 	runLength   : number,
+	isDoxygen   : boolean,
 }
 
 type Block = {
@@ -408,6 +408,7 @@ function tokenizeBlock(ctx: Context, block: Block)
 					indentWidth: 0,
 					alignWidth:  0,
 					runLength:   0,
+					isDoxygen:   false,
 				})
 				const lineInfo = block.lineInfos.at(-1)!
 
@@ -464,7 +465,8 @@ function tokenizeBlock(ctx: Context, block: Block)
 					if ((match = doxygenRe.exec(line.text)) && match.index < rLine.end.character)
 					{
 						iChar = doxygenRe.lastIndex
-						lineInfo.type = LineType.doxygen
+						lineInfo.isDoxygen = true
+						lineInfo.type = LineType.bullet
 						lineInfo.bullet = {
 							begin: match.index - 1,
 							end:   doxygenRe.lastIndex,
@@ -473,7 +475,7 @@ function tokenizeBlock(ctx: Context, block: Block)
 				}
 
 				// Bullet (split when attached to first token)
-				if (lineInfo.type != LineType.doxygen)
+				if (lineInfo.type != LineType.bullet)
 				{
 					bulletRe.lastIndex = iChar
 					if ((match = bulletRe.exec(line.text)) && match.index < rLine.end.character)
@@ -552,7 +554,7 @@ function analyzeBlock(ctx: Context, block: Block)
 
 		for (const lineInfo of block.lineInfos)
 		{
-			if (lineInfo.type == LineType.doxygen)
+			if (lineInfo.isDoxygen)
 				continue
 
 			const isBlank = lineInfo.tokenBegin == lineInfo.tokenEnd
@@ -580,7 +582,7 @@ function analyzeBlock(ctx: Context, block: Block)
 		{
 			const lineInfo = block.lineInfos[i]
 
-			if (lineInfo.type != LineType.bullet && lineInfo.type != LineType.doxygen)
+			if (lineInfo.type != LineType.bullet)
 				continue
 
 			const token     = lineInfo.prefix
@@ -600,16 +602,14 @@ function analyzeBlock(ctx: Context, block: Block)
 				lineInfo.alignWidth = Math.max(1, align - offset)
 			}
 
-			const firstType = lineInfo.type
 			for (; i < block.lineInfos.length - 1; i++)
 			{
 				const lineInfo = block.lineInfos[i + 1]
 
-				const type = lineInfo.type
-				if (type == LineType.blank || type == LineType.bullet || type == LineType.doxygen)
+				if (lineInfo .type == LineType.blank || lineInfo.type == LineType.bullet)
 					break
 
-				lineInfo.type = firstType
+				lineInfo.type = LineType.bullet
 			}
 		}
 	}
@@ -705,10 +705,6 @@ function wrapBlock(ctx: Context, block: Block): string
 			content = ""
 		}
 	}
-
-	// TODO: Don't eat doxygen bullets when there's no content
-	// Option 1 - Separate type
-	// Option 2 - ???
 
 	for (const lineInfo of block.lineInfos)
 	{
