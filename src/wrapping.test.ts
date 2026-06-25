@@ -58,7 +58,7 @@ function test(name: string, original: string, expected: string | string[], overr
 
 describe("wrap_text", () =>
 {
-/*
+//*
 	// Line Comments
 
 	// Test indentation
@@ -195,7 +195,6 @@ describe("wrap_text", () =>
 	test("doxygen/narrow",     "// @param asd asd",            "// @param asd\n//        asd", { lineWidth: 0 })
 	test("doxygen/newline",    "// @ref asd\n//\n// @ref asd", "// @ref asd\n//\n// @ref asd")
 	test("doxygen/bullet",     "// * @see asd",                "// * @see asd")
-//*/
 
 	// Test empty
 	//test("empty",            "//",          "")
@@ -210,7 +209,8 @@ describe("wrap_text", () =>
 	//test("empty/bullet",     "// * ",       "")
 	//test("empty/bullet",     "//\n// * ",   "")
 	//test("empty/newline",    "//\n//\n//",  "")
-	//test("empty/doxygen",    "// @endcode", "// @endcode")
+	test("empty/doxygen",    "// @endcode", "// @endcode")
+//*/
 
 
 

@@ -133,6 +133,7 @@ enum LineType
 	skip,
 	blank,
 	bullet,
+	doxygen,
 }
 
 type LineInfo = {
@@ -463,7 +464,7 @@ function tokenizeBlock(ctx: Context, block: Block)
 					if ((match = doxygenRe.exec(line.text)) && match.index < rLine.end.character)
 					{
 						iChar = doxygenRe.lastIndex
-						lineInfo.type = LineType.bullet
+						lineInfo.type = LineType.doxygen
 						lineInfo.bullet = {
 							begin: match.index - 1,
 							end:   doxygenRe.lastIndex,
@@ -472,7 +473,7 @@ function tokenizeBlock(ctx: Context, block: Block)
 				}
 
 				// Bullet (split when attached to first token)
-				if (lineInfo.type != LineType.bullet)
+				if (lineInfo.type != LineType.doxygen)
 				{
 					bulletRe.lastIndex = iChar
 					if ((match = bulletRe.exec(line.text)) && match.index < rLine.end.character)
@@ -547,9 +548,13 @@ function analyzeBlock(ctx: Context, block: Block)
 	// Detect blank lines
 	{
 		// NOTE: If a line is both a bullet and blank, blank wins
+		// NOTE: Doxygen lines are never considered blank
 
 		for (const lineInfo of block.lineInfos)
 		{
+			if (lineInfo.type == LineType.doxygen)
+				continue
+
 			const isBlank = lineInfo.tokenBegin == lineInfo.tokenEnd
 			lineInfo.type = isBlank ? LineType.blank : lineInfo.type
 		}
@@ -557,16 +562,14 @@ function analyzeBlock(ctx: Context, block: Block)
 		for (var i = 0; i < block.lineInfos.length; i++)
 		{
 			const lineInfo = block.lineInfos[i]
-			const isBlank = lineInfo.tokenBegin == lineInfo.tokenEnd
-			if (!isBlank) break
+			if (lineInfo.type != LineType.blank) break
 			lineInfo.type = LineType.skip
 		}
 
 		for (var i = block.lineInfos.length - 1; i >= 0; i--)
 		{
 			const lineInfo = block.lineInfos[i]
-			const isBlank = lineInfo.tokenBegin == lineInfo.tokenEnd
-			if (!isBlank) break
+			if (lineInfo.type != LineType.blank) break
 			lineInfo.type = LineType.skip
 		}
 	}
@@ -577,7 +580,7 @@ function analyzeBlock(ctx: Context, block: Block)
 		{
 			const lineInfo = block.lineInfos[i]
 
-			if (lineInfo.type != LineType.bullet)
+			if (lineInfo.type != LineType.bullet && lineInfo.type != LineType.doxygen)
 				continue
 
 			const token     = lineInfo.prefix
@@ -597,14 +600,16 @@ function analyzeBlock(ctx: Context, block: Block)
 				lineInfo.alignWidth = Math.max(1, align - offset)
 			}
 
+			const firstType = lineInfo.type
 			for (; i < block.lineInfos.length - 1; i++)
 			{
-				const nextLineInfo = block.lineInfos[i + 1]
+				const lineInfo = block.lineInfos[i + 1]
 
-				if (nextLineInfo.type == LineType.blank || nextLineInfo.type == LineType.bullet)
+				const type = lineInfo.type
+				if (type == LineType.blank || type == LineType.bullet || type == LineType.doxygen)
 					break
 
-				nextLineInfo.type = LineType.bullet
+				lineInfo.type = firstType
 			}
 		}
 	}
@@ -700,6 +705,10 @@ function wrapBlock(ctx: Context, block: Block): string
 			content = ""
 		}
 	}
+
+	// TODO: Don't eat doxygen bullets when there's no content
+	// Option 1 - Separate type
+	// Option 2 - ???
 
 	for (const lineInfo of block.lineInfos)
 	{
