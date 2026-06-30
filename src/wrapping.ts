@@ -374,12 +374,12 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 
 function tokenizeBlock(ctx: Context, block: Block)
 {
-	const indentRe  = /\s*/g
+	const indentRe  = /\s*/y
 	const prefixRe  = /[^\w\s@\\]+/g
 	const doxygenRe = /(?!(?:endlink|anchor|link|cite|ref|em|[abcenp])\b|f\$|\W)\S+/y
-	const bulletRe  = /[\*-]|\d+[\)\.]/g
+	const bulletRe  = /[\*-]|\d+[\)\.]/y
 	const tokenRe   = /\S+/g
-	const suffixRe  = /[^\w\s]+$/g // TODO: $ is probably wrong when there's text after the comment
+	const suffixRe  = /[^\w\s]+$/y // TODO: $ is probably wrong when there's text after the comment
 	const doxygenLeaders = [ "@".charCodeAt(0), "\\".charCodeAt(0) ]
 
 	switch (block.type)
@@ -444,7 +444,6 @@ function tokenizeBlock(ctx: Context, block: Block)
 
 				// TODO: Split indentation and align when there's no prefix
 				// TODO: Maybe this should be in analyzeBlock?
-				// TODO: How do we limit each of these to the start of the sub string? (use the y suffix)
 
 				// Align
 				indentRe.lastIndex = iChar
