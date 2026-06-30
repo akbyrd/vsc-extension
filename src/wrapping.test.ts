@@ -61,7 +61,7 @@ describe("wrap_text", () =>
 	// ----------------------------------------------------------------------------------------------
 	// Line Comments
 
-if (false) {
+if (true) {
 	// Test indentation
 	test("indent", "// asd",               "// asd")
 	test("indent", " // asd",              "// asd")
@@ -210,13 +210,12 @@ if (false) {
 	test("empty/bullet",     "//\n// * ",   "")
 	test("empty/newline",    "//\n//\n//",  "")
 	test("empty/doxygen",    "// @endcode", "// @endcode")
-}
 
 
 
 	// ----------------------------------------------------------------------------------------------
 	// Block Comments
-if (true) {
+
 	// Test indentation
 	test("indent", "   /* asd */",      "/* asd */")
 	test("indent", "\t/* asd */",       "\t/* asd */")
@@ -233,8 +232,8 @@ if (true) {
 	test("tail-space",            "/* asd*/",     "/* asd */")
 	test("tail-space",            "/* asd\t*/",   "/* asd */")
 	test("tail-space",            "/* asd \t */", "/* asd */")
-	test("tail-space/indent",     "\t/* asd*/ ",  "\t/* asd */")
-	test("tail-space/head-space", "/*asd*/ ",     "/* asd */")
+	test("tail-space/indent",     "\t/* asd*/",   "\t/* asd */")
+	test("tail-space/head-space", "/*asd*/",      "/* asd */")
 
 	// Test custom prefix
 	test("prefix",            "/** asd */",           "/** asd */")
@@ -246,7 +245,9 @@ if (true) {
 	test("prefix/indent",     "\t/** asd */",         "\t/** asd */")
 	test("prefix/head-space", "/**asd */",            "/** asd */")
 	test("prefix/tail-space", "/** asd*/",            "/** asd */")
+}
 
+if (false) {
 	// Test custom suffix
 	test("suffix",            "/* asd **/",   "/** asd **/")
 	test("suffix",            "/* asd !*/",   "/*! asd !*/")

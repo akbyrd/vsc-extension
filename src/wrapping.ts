@@ -24,6 +24,7 @@ class CachedResponse extends Response
 class Cache
 {
 	db = {
+		prefixes: new Set<PrefixSet>(),
 		fetch: {
 			response:    new Map<string, CachedResponse>(),
 			body:        new Map<CachedResponse, ReadableStream<Uint8Array> | null>(),
@@ -97,15 +98,26 @@ export type Context = {
 	onError    : (s: string) => void,
 }
 
-type PrefixSet = [string, string, string]
+type Prefix = {
+	chars : string,
+	align : number,
+}
+
+type PrefixSet = [Prefix, Prefix, Prefix]
+
+function makePrefixSet(s0: string, s1?: string, s2?: string): PrefixSet
+{
+	return [
+		{ chars: s0 ?? "", align: 0 },
+		{ chars: s1 ?? s0, align: 0 },
+		{ chars: s2 ?? "", align: 0 },
+	]
+}
 
 type LanguageData = {
 	grammar      : string,
-	lineComment  : string,
+	lineComment  : PrefixSet,
 	blockComment : PrefixSet,
-
-	// TODO: Attempt to remove
-	trimmedBlockComment? : PrefixSet,
 }
 
 type Parse = {
@@ -227,13 +239,16 @@ async function parseDocument(ctx: Context): Promise<Parse|undefined>
 	return undefined
 }
 
-function cachePrefixes(languageData: LanguageData)
+function cachePrefixes(p: PrefixSet)
 {
-	if (!languageData.trimmedBlockComment)
-	{
-		const bc = languageData.blockComment.map(s => s.trimStart()) as PrefixSet
-		languageData.trimmedBlockComment = bc
-	}
+	if (cache.db.prefixes.has(p)) return
+	cache.db.prefixes.add(p)
+
+	const space = " ".charCodeAt(0)
+	while (p[1].align < p[1].chars.length && p[1].chars.charCodeAt(p[1].align) == space) p[1].align++
+	while (p[2].align < p[2].chars.length && p[2].chars.charCodeAt(p[2].align) == space) p[2].align++
+	p[1].chars = p[1].chars.slice(p[1].align, p[1].chars.length)
+	p[2].chars = p[2].chars.slice(p[2].align, p[2].chars.length)
 }
 
 function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
@@ -243,9 +258,8 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 	if (parse)
 	{
 		const languageData = languages[ctx.languageId]
-
-		cachePrefixes(languageData)
-		assert(languageData.trimmedBlockComment)
+		cachePrefixes(languageData.lineComment)
+		cachePrefixes(languageData.blockComment)
 
 		const sortedSelections = ctx.selections.slice()
 		sortedSelections.sort((a, b) => a.start.compareTo(b.start))
@@ -268,7 +282,7 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 			for (const capture of captures)
 			{
 				const text        : string  = capture.node.text
-				const lineComment : string  = languageData.lineComment
+				const lineComment : string  = languageData.lineComment[0].chars
 				const isLine      : boolean = !!lineComment && text.startsWith(lineComment)
 
 				if (isLine)
@@ -296,7 +310,7 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 					{
 						const node       = startNode.previousSibling
 						const isComment  = node?.type == "comment"
-						const isLine     = node?.text.startsWith(languageData.lineComment)
+						const isLine     = node?.text.startsWith(lineComment)
 						const isAdjacent = node?.startPosition.row == startNode.startPosition.row - 1
 						const isTrailing = node?.startPosition.row == node?.previousSibling?.endPosition.row
 						if (isComment && isLine && isAdjacent && !isTrailing)
@@ -311,7 +325,7 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 					{
 						const node       = endNode.nextSibling
 						const isComment  = node?.type == "comment"
-						const isLine     = node?.text.startsWith(languageData.lineComment)
+						const isLine     = node?.text.startsWith(lineComment)
 						const isAdjacent = node?.startPosition.row == endNode.startPosition.row + 1
 						const isTrailing = endNode.startPosition.row == endNode.previousSibling?.endPosition.row
 						if (isComment && isLine && isAdjacent && !isTrailing)
@@ -334,7 +348,7 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 						languageId: ctx.languageId,
 						isTrailing: isTrailing,
 						lineInfos:  [],
-						prefixes:   [ "", "", "" ],
+						prefixes:   structuredClone(languageData.lineComment),
 						tokens:     [],
 					});
 				}
@@ -346,7 +360,7 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 						languageId: ctx.languageId,
 						isTrailing: false,
 						lineInfos:  [],
-						prefixes:   [ "", "", "" ],
+						prefixes:   structuredClone(languageData.blockComment),
 						tokens:     [],
 					});
 				}
@@ -363,7 +377,7 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 				languageId: ctx.languageId,
 				isTrailing: false,
 				lineInfos:  [],
-				prefixes:   ["", "", ""],
+				prefixes:   makePrefixSet(""),
 				tokens:     [],
 			});
 		}
@@ -379,7 +393,7 @@ function tokenizeBlock(ctx: Context, block: Block)
 	const doxygenRe = /(?!(?:endlink|anchor|link|cite|ref|em|[abcenp])\b|f\$|\W)\S+/y
 	const bulletRe  = /[\*-]|\d+[\)\.]/y
 	const tokenRe   = /\S+/g
-	const suffixRe  = /[^\w\s]+$/y // TODO: $ is probably wrong when there's text after the comment
+	const suffixRe  = /[^\w\s]+$/g // TODO: $ is probably wrong when there's text after the comment
 	const doxygenLeaders = [ "@".charCodeAt(0), "\\".charCodeAt(0) ]
 
 	switch (block.type)
@@ -419,7 +433,7 @@ function tokenizeBlock(ctx: Context, block: Block)
 				indentRe.lastIndex = iChar
 				match = indentRe.exec(line.text)
 				{
-					iChar = indentRe.lastIndex
+					iChar = Math.max(indentRe.lastIndex, rLine.start.character)
 					lineInfo.indent = {
 						begin: match!.index,
 						end:   indentRe.lastIndex,
@@ -432,7 +446,7 @@ function tokenizeBlock(ctx: Context, block: Block)
 				// Only look for expected prefix + custom?
 
 				// Prefix (split when attached to first token)
-				prefixRe.lastIndex = Math.max(iChar, rLine.start.character)
+				prefixRe.lastIndex = iChar
 				if ((match = prefixRe.exec(line.text)) && match.index < rLine.end.character)
 				{
 					iChar = prefixRe.lastIndex
@@ -503,10 +517,10 @@ function tokenizeBlock(ctx: Context, block: Block)
 			// Suffix (split when attached to last token)
 			if (block.type == BlockType.blockComment)
 			{
-				assert(block.tokens.length)
-
+				// TODO: Attempt to simplify this
 				const lineInfo = block.lineInfos.at(-1)!
-				const token    = block.tokens.at(-1)!
+				const useToken = lineInfo.tokenEnd > lineInfo.tokenBegin
+				const token    = useToken ? block.tokens.at(-1)! : lineInfo.prefix
 
 				// NOTE: This should always match
 				suffixRe.lastIndex = token.begin
@@ -515,6 +529,11 @@ function tokenizeBlock(ctx: Context, block: Block)
 				{
 					const suffixLen = match[0].length
 					token.end -= suffixLen
+					if (useToken && token.end == token.begin)
+					{
+						lineInfo.tokenEnd--
+						block.tokens.pop()
+					}
 
 					lineInfo!.suffix = {
 						begin: match.index,
@@ -621,8 +640,8 @@ function analyzeBlock(ctx: Context, block: Block)
 			const lineInfo = block.lineInfos[0]
 			const token    = lineInfo.prefix
 			const prefix   = lineInfo.text.slice(token.begin, token.end)
-			block.prefixes[0] = prefix
-			block.prefixes[1] = prefix
+			block.prefixes[0].chars = prefix
+			block.prefixes[1].chars = prefix
 			break
 		}
 
@@ -631,21 +650,21 @@ function analyzeBlock(ctx: Context, block: Block)
 			// First line
 			{
 				const lineInfo = block.lineInfos[0]
-				const token    = block.tokens[lineInfo.tokenBegin]
+				const token    = lineInfo.prefix
 				const prefix   = lineInfo.text.slice(token.begin, token.end)
-				block.prefixes[0] = prefix
+				block.prefixes[0].chars = prefix
 			}
 
 			// Second line
 			if (block.lineInfos.length > 1)
 			{
-				const languageData = languages[block.languageId]
-				const fallback     = languageData.trimmedBlockComment![1]
-
 				const lineInfo = block.lineInfos[1]
 				const token    = lineInfo.prefix
-				const prefix   = lineInfo.text.slice(token.begin, token.end)
-				block.prefixes[1] = prefix.length ? prefix : fallback
+				if (token.end > token.begin)
+				{
+					const prefix = lineInfo.text.slice(token.begin, token.end)
+					block.prefixes[1].chars = prefix
+				}
 			}
 
 			// Last line
@@ -653,24 +672,26 @@ function analyzeBlock(ctx: Context, block: Block)
 				const lineInfo = block.lineInfos.at(-1)!
 				const token    = lineInfo.suffix
 				const suffix   = lineInfo.text.slice(token.begin, token.end)
-				block.prefixes[2] = suffix
+				block.prefixes[2].chars = suffix
 			}
 			break
 		}
 	}
 
 	// Calculate run length
-	var runLength = 0
-	var lastType = LineType.null
-	for (const lineInfo of block.lineInfos)
 	{
-		const isBulletContinuation = lineInfo.bullet.end > lineInfo.bullet.begin
-		if (lineInfo.type != lastType || isBulletContinuation)
+		var runLength = 0
+		var lastType = LineType.null
+		for (const lineInfo of block.lineInfos)
 		{
-			runLength = 0
-			lastType = lineInfo.type
+			const isBulletContinuation = lineInfo.bullet.end > lineInfo.bullet.begin
+			if (lineInfo.type != lastType || isBulletContinuation)
+			{
+				runLength = 0
+				lastType = lineInfo.type
+			}
+			lineInfo.runLength = runLength++
 		}
-		lineInfo.runLength = runLength++
 	}
 }
 
@@ -683,13 +704,14 @@ function wrapBlock(ctx: Context, block: Block): string
 	// * Line prefixes added to continuation lines of block comments
 	// * Whitespace between content tokens is replaced with a single space
 
-	const lines : string[] = []
-
 	const indentWidth = block.lineInfos[0].indentWidth
 	const indent      = (ctx.useSpaces || block.isTrailing) ? " ".repeat(indentWidth) : "\t".repeat(indentWidth / ctx.tabSize)
 	const lineWidth   = block.isTrailing ? Number.POSITIVE_INFINITY : ctx.lineWidth
+	const prefixAlign = " ".repeat(block.prefixes[1].align)
 
-	var prefix  = block.prefixes[0]
+	const lines : string[] = []
+
+	var prefix  = block.prefixes[0].chars
 	var leader  = ""
 	var content = ""
 
@@ -699,7 +721,7 @@ function wrapBlock(ctx: Context, block: Block): string
 		{
 			lines.push(leader + content)
 
-			prefix  = block.prefixes[1]
+			prefix  = block.prefixes[1].chars
 			leader  = ""
 			content = ""
 		}
@@ -727,11 +749,12 @@ function wrapBlock(ctx: Context, block: Block): string
 
 			if (overflow)
 			{
+				// TODO: Why doesn't this need to account for prefixAlign.length?
 				const alignWidth = leader.length - indent.length - prefix.length
 				const align      = " ".repeat(alignWidth)
 
 				flush()
-				leader = `${indent}${prefix}${align}`
+				leader = `${indent}${prefixAlign}${prefix}${align}`
 			}
 
 			const tokenStr = lineInfo.text.slice(token.begin, token.end)
@@ -742,9 +765,18 @@ function wrapBlock(ctx: Context, block: Block): string
 
 	if (block.type == BlockType.blockComment)
 	{
-		const suffix = block.prefixes[2]
-		const line   = `${indent}${suffix}`
-		lines.push(line)
+		const suffix = block.prefixes[2].chars
+		if (lines.length == 1)
+		{
+			const line = lines.pop() + ` ${suffix}`
+			lines.push(line)
+		}
+		else
+		{
+			const align = " ".repeat(block.prefixes[2].align)
+			const line  = `${indent}${align}${suffix}`
+			lines.push(line)
+		}
 	}
 
 	const result = lines.join('\n')
@@ -776,58 +808,58 @@ const cache = new Cache()
 const languages: Record<string, LanguageData> = {
 	c: {
 		grammar: "https://github.com/tree-sitter/tree-sitter-c/releases/latest/download/tree-sitter-c.wasm",
-		lineComment: "//",
-		blockComment: [ "/*", " *", " */" ],
+		lineComment: makePrefixSet("//"),
+		blockComment: makePrefixSet("/*", " *", " */"),
 	},
 	cpp: {
 		grammar: "https://github.com/tree-sitter/tree-sitter-cpp/releases/latest/download/tree-sitter-cpp.wasm",
-		lineComment: "//",
-		blockComment: [ "/*", " *", " */" ],
+		lineComment: makePrefixSet("//"),
+		blockComment: makePrefixSet("/*", " *", " */"),
 	},
 	csharp: {
 		grammar: "https://github.com/tree-sitter/tree-sitter-c-sharp/releases/latest/download/tree-sitter-c_sharp.wasm",
-		lineComment: "//",
-		blockComment: [ "/*", " *", " */" ],
+		lineComment: makePrefixSet("//"),
+		blockComment: makePrefixSet("/*", " *", " */"),
 	},
 	css: {
 		grammar: "https://github.com/tree-sitter/tree-sitter-css/releases/latest/download/tree-sitter-css.wasm",
-		lineComment: "",
-		blockComment: [ "/*", " *", " */" ],
+		lineComment: makePrefixSet(""),
+		blockComment: makePrefixSet("/*", " *", " */"),
 	},
 	go: {
 		grammar: "https://github.com/tree-sitter/tree-sitter-go/releases/latest/download/tree-sitter-go.wasm",
-		lineComment: "//",
-		blockComment: [ "/*", " *", " */" ],
+		lineComment: makePrefixSet("//"),
+		blockComment: makePrefixSet("/*", " *", " */"),
 	},
 	html: {
 		grammar: "https://github.com/tree-sitter/tree-sitter-html/releases/latest/download/tree-sitter-html.wasm",
-		lineComment: "",
-		blockComment: [ "<!--", "", "-->" ],
+		lineComment: makePrefixSet(""),
+		blockComment: makePrefixSet("<!--", "", "-->"),
 	},
 	javascript: {
 		grammar: "https://github.com/tree-sitter/tree-sitter-javascript/releases/latest/download/tree-sitter-javascript.wasm",
-		lineComment: "//",
-		blockComment: [ "/*", " *", " */" ],
+		lineComment: makePrefixSet("//"),
+		blockComment: makePrefixSet("/*", " *", " */"),
 	},
 	json: {
 		grammar: "https://github.com/tree-sitter/tree-sitter-json/releases/latest/download/tree-sitter-json.wasm",
-		lineComment: "",
-		blockComment: [ "", "", "" ],
+		lineComment: makePrefixSet(""),
+		blockComment: makePrefixSet("", "", ""),
 	},
 	python: {
 		grammar: "https://github.com/tree-sitter/tree-sitter-python/releases/latest/download/tree-sitter-python.wasm",
-		lineComment: "#",
-		blockComment: [ "", "", "" ],
+		lineComment: makePrefixSet("#"),
+		blockComment: makePrefixSet("", "", ""),
 	},
 	shellscript: {
 		grammar: "https://github.com/tree-sitter/tree-sitter-bash/releases/latest/download/tree-sitter-bash.wasm",
-		lineComment: "#",
-		blockComment: [ "", "", "" ],
+		lineComment: makePrefixSet("#"),
+		blockComment: makePrefixSet("", "", ""),
 	},
 	typescript: {
 		grammar: "https://github.com/tree-sitter/tree-sitter-typescript/releases/latest/download/tree-sitter-typescript.wasm",
-		lineComment: "//",
-		blockComment: [ "/*", " *", " */" ],
+		lineComment: makePrefixSet("//"),
+		blockComment: makePrefixSet("/*", " *", " */"),
 	},
 }
 
