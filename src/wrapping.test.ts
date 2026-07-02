@@ -113,12 +113,12 @@ describe("wrapping - line comments", () =>
 	it("prefix/tail-space", () => test("/// asd ",  "/// asd"))
 
 	// Test trailing
-	it("trailing 1",          () => test("0; // asd",         " // asd"))
-	it("trailing 2",          () => test("0; // asd\n// asd", [ " // asd", "// asd" ]))
-	it("trailing/indent",     () => test("0;// asd",          " // asd"))
-	it("trailing/head-space", () => test("0; //asd",          " // asd"))
-	it("trailing/tail-space", () => test("0; // asd ",        " // asd"))
-	it("trailing/prefix",     () => test("0; /// asd",        " /// asd"))
+	it("trailing 1",          () => test("0; // asd",         "// asd"))
+	it("trailing 2",          () => test("0; // asd\n// asd", [ "// asd", "// asd" ]))
+	it("trailing/indent",     () => test("0;// asd",          "// asd"))
+	it("trailing/head-space", () => test("0; //asd",          "// asd"))
+	it("trailing/tail-space", () => test("0; // asd ",        "// asd"))
+	it("trailing/prefix",     () => test("0; /// asd",        "/// asd"))
 
 	// Test multi line
 	it("multiline 1",          () => test("// asd\n// asd",    "// asd asd"))
@@ -128,7 +128,7 @@ describe("wrapping - line comments", () =>
 	it("multiline/head-space", () => test("//asd\n// asd",     "// asd\n// asd",       { lineWidth: 6 }))
 	it("multiline/tail-space", () => test("// asd \n// asd ",  "// asd\n// asd",       { lineWidth: 6 }))
 	it("multiline/prefix",     () => test("/// asd\n// asd",   "/// asd\n/// asd",     { lineWidth: 6 }))
-	it("multiline/trailing",   () => test("0; // asd\n// asd", [ " // asd", "// asd" ]))
+	it("multiline/trailing",   () => test("0; // asd\n// asd", [ "// asd", "// asd" ]))
 
 	// Test narrow lines
 	it("narrow 1",          () => test("// asd",                 "// asd",                         { lineWidth: 0 }))
@@ -138,7 +138,7 @@ describe("wrapping - line comments", () =>
 	it("narrow/head-space", () => test("//asd asd",              "// asd\n// asd",                 { lineWidth: 0 }))
 	it("narrow/tail-space", () => test("// asd asd ",            "// asd\n// asd",                 { lineWidth: 0 }))
 	it("narrow/prefix",     () => test("/// asd asd",            "/// asd\n/// asd",               { lineWidth: 0 }))
-	it("narrow/trailing",   () => test("0; // asd",              " // asd",                         { lineWidth: 0 }))
+	it("narrow/trailing",   () => test("0; // asd",              "// asd",                         { lineWidth: 0 }))
 
 	// Test preserved newlines
 	it("newline 1",          () => test("// asd\n//\n//\n// asd",     "// asd\n//\n// asd"))
@@ -152,7 +152,7 @@ describe("wrapping - line comments", () =>
 	it("newline/head-space", () => test("//asd\n//\n//asd",           "// asd\n//\n// asd"))
 	it("newline/tail-space", () => test("// asd \n// \n// asd ",      "// asd\n//\n// asd"))
 	it("newline/prefix",     () => test("/// asd\n///\n/// asd",      "/// asd\n///\n/// asd"))
-	it("newline/trailing",   () => test("0; // asd\n//\n// asd",      [ " // asd", "// asd" ]))
+	it("newline/trailing",   () => test("0; // asd\n//\n// asd",      [ "// asd", "// asd" ]))
 	it("newline/narrow",     () => test("// asd asd\n//\n// asd asd", "// asd\n// asd\n//\n// asd\n// asd", { lineWidth: 0 }))
 
 	// Test preserved bullets
@@ -174,7 +174,7 @@ describe("wrapping - line comments", () =>
 	it("bullet/head-space 2", () => test("//1. asd",                  "// 1. asd"))
 	it("bullet/tail-space",   () => test("//  * asd ",                "//  * asd"))
 	it("bullet/prefix",       () => test("///  * asd",                "///  * asd"))
-	it("bullet/trailing",     () => test("0; //  * asd",              " //  * asd"))
+	it("bullet/trailing",     () => test("0; //  * asd",              "//  * asd"))
 	it("bullet/narrow 1",     () => test("//  * asd",                 "//  * asd",            { lineWidth: 0 }))
 	it("bullet/narrow 2",     () => test("//  * asd asd",             "//  * asd\n//    asd", { lineWidth: 0 }))
 	it("bullet/newline",      () => test("//  * asd\n//\n//  * asd",  "//  * asd\n//\n//  * asd"))
@@ -195,7 +195,7 @@ describe("wrapping - line comments", () =>
 	it("doxygen/head-space 2", () => test("//@ref\n// asd",               "// @ref asd"))
 	it("doxygen/tail-space",   () => test("// @ref asd ",                 "// @ref asd"))
 	it("doxygen/prefix",       () => test("/// @ref asd",                 "/// @ref asd"))
-	it("doxygen/trailing",     () => test("0; // @ref asd",               " // @ref asd"))
+	it("doxygen/trailing",     () => test("0; // @ref asd",               "// @ref asd"))
 	it("doxygen/narrow",       () => test("// @param asd asd",            "// @param asd\n//        asd", { lineWidth: 0 }))
 	it("doxygen/newline",      () => test("// @ref asd\n//\n// @ref asd", "// @ref asd\n//\n// @ref asd"))
 	it("doxygen/bullet",       () => test("// * @see asd",                "// * @see asd"))
@@ -264,12 +264,12 @@ describe("wrapping - block comments", () =>
 	// TODO: Add tests
 
 	// Test trailing
-	it("trailing",            () => test("0; /* asd */",  " /* asd */"))
-	it("trailing/indent",     () => test("0;/* asd */",   " /* asd */"))
-	it("trailing/head-space", () => test("0; /*asd */",   " /* asd */"))
-	it("trailing/tail-space", () => test("0; /* asd*/",   " /* asd */"))
-	it("trailing/prefix",     () => test("0; /** asd */", " /** asd */"))
-	it("trailing/suffix",     () => test("0; /* asd **/", " /* asd **/"))
+	it("trailing",            () => test("0; /* asd */",  "/* asd */"))
+	it("trailing/indent",     () => test("0;/* asd */",   "/* asd */"))
+	it("trailing/head-space", () => test("0; /*asd */",   "/* asd */"))
+	it("trailing/tail-space", () => test("0; /* asd*/",   "/* asd */"))
+	it("trailing/prefix",     () => test("0; /** asd */", "/** asd */"))
+	it("trailing/suffix",     () => test("0; /* asd **/", "/* asd **/"))
 	// TODO: Multi-line?
 
 	// Test embedded
@@ -279,7 +279,7 @@ describe("wrapping - block comments", () =>
 	it("embedded/tail-space", () => test("foo(/* asd*/ x);",    "/* asd */"))
 	it("embedded/prefix",     () => test("foo(/** asd */ x);",  "/** asd */"))
 	it("embedded/suffix",     () => test("foo(/* asd **/ x);",  "/* asd **/"))
-	it("embedded/trailing",   () => test("foo(/* asd */ x);",   " /* asd */"))
+	it("embedded/trailing",   () => test("foo(/* asd */ x);",   "/* asd */"))
 	// TODO: Multi-line?
 
 	// Test multi line
@@ -291,7 +291,7 @@ describe("wrapping - block comments", () =>
 	it("multiline/tail-space", () => test("/* asd \n * asd \n*/",    "/* asd\n * asd\n */",       { lineWidth: 6 }))
 	it("multiline/prefix",     () => test("/** asd\n ** asd */",     "/** asd\n ** asd\n */",     { lineWidth: 6 }))
 	it("multiline/suffix",     () => test("/* asd\n * asd **/",      "/* asd\n * asd\n **/",      { lineWidth: 6 }))
-	it("multiline/trailing",   () => test("0; /* asd */\n/* asd */", [ " /* asd */", "/* asd */" ]))
+	it("multiline/trailing",   () => test("0; /* asd */\n/* asd */", [ "/* asd */", "/* asd */" ]))
 
 	// Test narrow lines
 	it("narrow 1",          () => test("/* asd */",                 "/* asd */",                           { lineWidth: 0 }))
@@ -302,7 +302,7 @@ describe("wrapping - block comments", () =>
 	it("narrow/tail-space", () => test("/* asd asd*/",              "/* asd\n * asd\n */",                 { lineWidth: 0 }))
 	it("narrow/prefix",     () => test("/** asd asd */",            "/** asd\n *  asd\n */",               { lineWidth: 0 }))
 	it("narrow/suffix",     () => test("/* asd asd **/",            "/* asd\n * asd\n **/",                { lineWidth: 0 }))
-	it("narrow/trailing",   () => test("0; /* asd */",              " /* asd */",                           { lineWidth: 0 }))
+	it("narrow/trailing",   () => test("0; /* asd */",              "/* asd */",                           { lineWidth: 0 }))
 
 	// Test preserved newlines
 	// Test preserved bullets

@@ -167,7 +167,7 @@ type Block = {
 	type       : BlockType,
 	range      : Range,
 	languageId : string
-	isTrailing : boolean,
+	isEmbedded : boolean,
 	lineInfos  : LineInfo[],
 	prefixes   : PrefixSet,
 	tokens     : Token[],
@@ -346,7 +346,7 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 						type:       BlockType.lineComment,
 						range:      new Range(start, end),
 						languageId: ctx.languageId,
-						isTrailing: isTrailing,
+						isEmbedded: isTrailing,
 						lineInfos:  [],
 						prefixes:   structuredClone(languageData.lineComment),
 						tokens:     [],
@@ -354,11 +354,15 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 				}
 				else
 				{
+					const node       = capture.node
+					const isTrailing = node.startPosition.row == node.previousSibling?.endPosition.row
+					const isLeading  = node.endPosition.row == node.nextSibling?.startPosition.row
+
 					blocks.push({
 						type:       BlockType.blockComment,
 						range:      toRange(capture.node),
 						languageId: ctx.languageId,
-						isTrailing: false,
+						isEmbedded: isTrailing || isLeading,
 						lineInfos:  [],
 						prefixes:   structuredClone(languageData.blockComment),
 						tokens:     [],
@@ -375,7 +379,7 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 				type:       BlockType.prose,
 				range:      selection,
 				languageId: ctx.languageId,
-				isTrailing: false,
+				isEmbedded: false,
 				lineInfos:  [],
 				prefixes:   makePrefixSet(""),
 				tokens:     [],
@@ -393,7 +397,7 @@ function tokenizeBlock(ctx: Context, block: Block)
 	const doxygenRe = /(?!(?:endlink|anchor|link|cite|ref|em|[abcenp])\b|f\$|\W)\S+/y
 	const bulletRe  = /[\*-]|\d+[\)\.]/y
 	const tokenRe   = /\S+/g
-	const suffixRe  = /[^\w\s]+$/g // TODO: $ is probably wrong when there's text after the comment
+	const suffixRe  = /[^\w\s]+/g
 	const doxygenLeaders = [ "@".charCodeAt(0), "\\".charCodeAt(0) ]
 
 	switch (block.type)
@@ -553,13 +557,9 @@ function analyzeBlock(ctx: Context, block: Block)
 {
 	// Detect indentation
 	{
-		const lineInfo = block.lineInfos[0]
-		if (block.isTrailing)
+		if (!block.isEmbedded)
 		{
-			lineInfo.indentWidth = 1
-		}
-		else
-		{
+			const lineInfo = block.lineInfos[0]
 			lineInfo.indentWidth = consumeIndent(lineInfo.text, 0, 0, ctx.tabSize)
 			lineInfo.indentWidth = Math.floor(lineInfo.indentWidth / ctx.tabSize) * ctx.tabSize
 		}
@@ -704,16 +704,23 @@ function wrapBlock(ctx: Context, block: Block): string
 	// * Line prefixes added to continuation lines of block comments
 	// * Whitespace between content tokens is replaced with a single space
 
-	const indentWidth = block.lineInfos[0].indentWidth
-	const indent      = (ctx.useSpaces || block.isTrailing) ? " ".repeat(indentWidth) : "\t".repeat(indentWidth / ctx.tabSize)
-	const lineWidth   = block.isTrailing ? Number.POSITIVE_INFINITY : ctx.lineWidth
-	const prefixAlign = " ".repeat(block.prefixes[1].align)
-
 	const lines : string[] = []
 
-	var prefix  = block.prefixes[0].chars
+	const lineWidth    = block.isEmbedded ? Number.POSITIVE_INFINITY : ctx.lineWidth
+	const indentWidth  = block.lineInfos[0].indentWidth
+	const indent       = ctx.useSpaces ? " ".repeat(indentWidth) : "\t".repeat(indentWidth / ctx.tabSize)
+	const p1           = block.prefixes[1]
+	const prefix       = " ".repeat(p1.align) + p1.chars
+
 	var leader  = ""
 	var content = ""
+
+	if (block.type == BlockType.blockComment)
+	{
+		const prefix = block.prefixes[0].chars
+		const line   = `${indent}${prefix}`
+		lines.push(line)
+	}
 
 	function flush()
 	{
@@ -721,7 +728,6 @@ function wrapBlock(ctx: Context, block: Block): string
 		{
 			lines.push(leader + content)
 
-			prefix  = block.prefixes[1].chars
 			leader  = ""
 			content = ""
 		}
@@ -734,6 +740,7 @@ function wrapBlock(ctx: Context, block: Block): string
 
 		if (lineInfo.runLength === 0)
 		{
+			// TODO: I think this needs to use prefixAlign too
 			flush()
 			const align  = " ".repeat(lineInfo.alignWidth)
 			const bullet = lineInfo.text.slice(lineInfo.bullet.begin, lineInfo.bullet.end)
@@ -749,12 +756,20 @@ function wrapBlock(ctx: Context, block: Block): string
 
 			if (overflow)
 			{
-				// TODO: Why doesn't this need to account for prefixAlign.length?
-				const alignWidth = leader.length - indent.length - prefix.length
-				const align      = " ".repeat(alignWidth)
+				// TODO: Fix alignment
+				// TODO: Bake prefix alignment into chars
+
+				// First line    - <indent><prefixAlign><prefix><bulletAlign><bullet>     <content>
+				// Continue line - <indent><prefixAlign><prefix><bulletAlign><contentAlign><content>
+				//                         ^                    ^            ^
+				//                         |                    |            from bullet length
+				//                         |                    from prefix length
+				//                         from language default
 
 				flush()
-				leader = `${indent}${prefixAlign}${prefix}${align}`
+				const align  = " ".repeat(lineInfo.alignWidth) // TODO: Has to come from the first line
+				const bulletAlign = " ".repeat(0)
+				leader = `${indent}${prefix}${align}${bulletAlign}`
 			}
 
 			const tokenStr = lineInfo.text.slice(token.begin, token.end)
@@ -863,6 +878,7 @@ const languages: Record<string, LanguageData> = {
 	},
 }
 
+// TODO: Try to split "prefix custom" out of prefix
 // TODO: Change tokenEnd to tokenCount
 // TODO: Split indentation and custom whitespace
 // TODO: Change customPrefix slice to a lazy resolve
