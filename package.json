@@ -222,17 +222,17 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc",
     "watch": "tsc --watch",
-    "lint": "eslint src --ext ts",
+    "lint": "eslint src",
     "pretest": "tsc --build --clean",
     "test": "tsc && node --test --no-experimental-strip-types --inspect --inspect-publish-uid=http"
   },
   "devDependencies": {
-    "@types/node": "18.x",
+    "@stylistic/eslint-plugin": "^5.10.0",
+    "@types/node": "^18.0.0",
     "@types/vscode": "^1.75.0",
-    "@typescript-eslint/eslint-plugin": "^5.45.0",
-    "@typescript-eslint/parser": "^5.45.0",
-    "eslint": "^8.28.0",
-    "typescript": "^4.9.3"
+    "eslint": "^10.6.0",
+    "typescript": "^4.9.3",
+    "typescript-eslint": "^8.62.1"
   },
   "dependencies": {
     "web-tree-sitter": "^0.26.9"

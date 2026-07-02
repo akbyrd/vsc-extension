@@ -1,5 +1,5 @@
 import * as vscode from "vscode"
-import {wrap_text, Context} from "./wrapping.js"
+import {wrapText, Context} from "./wrapping.js"
 
 export function activate(context: vscode.ExtensionContext)
 {
@@ -8,20 +8,20 @@ export function activate(context: vscode.ExtensionContext)
 		vscode.commands.registerCommand("akbyrd.task.getArgs",     task_getArgs),
 
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.scrollTo.cursor",                      scrollTo_cursor),
-		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.blankLine.prev.center",   t => cursorMoveTo_blankLine_center(t, Direction.Prev, false)),
-		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.blankLine.next.center",   t => cursorMoveTo_blankLine_center(t, Direction.Next, false)),
-		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.blankLine.prev.center", t => cursorMoveTo_blankLine_center(t, Direction.Prev, true)),
-		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.blankLine.next.center", t => cursorMoveTo_blankLine_center(t, Direction.Next, true)),
-		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.symbol.prev",             t => cursorMoveTo_symbol(t, HierarchyDirection.Prev, false)),
-		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.symbol.next",             t => cursorMoveTo_symbol(t, HierarchyDirection.Next, false)),
-		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.symbol.prnt",             t => cursorMoveTo_symbol(t, HierarchyDirection.Parent, false)),
-		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.symbol.chld",             t => cursorMoveTo_symbol(t, HierarchyDirection.Child, false)),
-		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.symbol.prev",           t => cursorMoveTo_symbol(t, HierarchyDirection.Prev, true)),
-		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.symbol.next",           t => cursorMoveTo_symbol(t, HierarchyDirection.Next, true)),
-		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.symbol.prnt",           t => cursorMoveTo_symbol(t, HierarchyDirection.Parent, true)),
-		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.symbol.chld",           t => cursorMoveTo_symbol(t, HierarchyDirection.Child, true)),
-		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteChunk.prev",                     t => deleteChunk(t, Direction.Prev)),
-		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteChunk.next",                     t => deleteChunk(t, Direction.Next)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.blankLine.prev.center",   t => cursorMoveTo_blankLine_center(t, Direction.prev, false)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.blankLine.next.center",   t => cursorMoveTo_blankLine_center(t, Direction.next, false)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.blankLine.prev.center", t => cursorMoveTo_blankLine_center(t, Direction.prev, true)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.blankLine.next.center", t => cursorMoveTo_blankLine_center(t, Direction.next, true)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.symbol.prev",             t => cursorMoveTo_symbol(t, HierarchyDirection.prev, false)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.symbol.next",             t => cursorMoveTo_symbol(t, HierarchyDirection.next, false)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.symbol.prnt",             t => cursorMoveTo_symbol(t, HierarchyDirection.parent, false)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorMoveTo.symbol.chld",             t => cursorMoveTo_symbol(t, HierarchyDirection.child, false)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.symbol.prev",           t => cursorMoveTo_symbol(t, HierarchyDirection.prev, true)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.symbol.next",           t => cursorMoveTo_symbol(t, HierarchyDirection.next, true)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.symbol.prnt",           t => cursorMoveTo_symbol(t, HierarchyDirection.parent, true)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.cursorSelectTo.symbol.chld",           t => cursorMoveTo_symbol(t, HierarchyDirection.child, true)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteChunk.prev",                     t => deleteChunk(t, Direction.prev)),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteChunk.next",                     t => deleteChunk(t, Direction.next)),
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteLine.prev",                      deleteLine_prev),
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.deleteLine.next",                      deleteLine_next),
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.fold.functions",                       t => fold_definitions(t, false, true)),
@@ -48,11 +48,11 @@ type TaskWithArgs =
 
 async function task_runWithArgs(taskWithArgs: TaskWithArgs | string)
 {
-	if (!taskWithArgs) throw "Arguments missing"
-	if (typeof taskWithArgs == "string") taskWithArgs = { task: taskWithArgs, taskArgs: {} }
-	if (!taskWithArgs.task) throw "Task not specified"
-	if (!taskWithArgs.taskArgs) throw "Task arguments not specified"
-	if (typeof taskWithArgs.taskArgs != "object") throw "Task arguments must be an object"
+	if (!taskWithArgs) throw new Error("Arguments missing")
+	if (typeof taskWithArgs === "string") taskWithArgs = { task: taskWithArgs, taskArgs: {} }
+	if (!taskWithArgs.task) throw new Error("Task not specified")
+	if (!taskWithArgs.taskArgs) throw new Error("Task arguments not specified")
+	if (typeof taskWithArgs.taskArgs !== "object") throw new Error("Task arguments must be an object")
 
 	taskArgs = taskWithArgs.taskArgs
 	await vscode.commands.executeCommand("workbench.action.tasks.runTask", taskWithArgs.task)
@@ -67,11 +67,11 @@ async function task_runWithArgs(taskWithArgs: TaskWithArgs | string)
 
 function task_getArgs(argName: string)
 {
-	if (!taskArgs) throw "akbyrd.task.getArgs can only be used with akbyrd.task.runTaskWithArgs"
+	if (!taskArgs) throw new Error("akbyrd.task.getArgs can only be used with akbyrd.task.runTaskWithArgs")
 
 	let arg: any | undefined = taskArgs[argName as keyof object]
-	if (arg == undefined) throw `Task arguments do not contain "${argName}"`
-	return typeof arg == "string" ? arg : arg.toString()
+	if (arg === undefined) throw new Error(`Task arguments do not contain "${argName}"`)
+	return typeof arg === "string" ? arg : arg.toString()
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -79,8 +79,8 @@ function task_getArgs(argName: string)
 
 enum Direction
 {
-	Prev,
-	Next,
+	prev,
+	next,
 }
 
 function scrollTo_cursor(textEditor: vscode.TextEditor)
@@ -92,7 +92,7 @@ function scrollTo_cursor(textEditor: vscode.TextEditor)
 
 async function cursorMoveTo_blankLine_center(textEditor: vscode.TextEditor, direction: Direction, select: boolean)
 {
-	const to = direction == Direction.Next ? "nextBlankLine" : "prevBlankLine"
+	const to = direction === Direction.next ? "nextBlankLine" : "prevBlankLine"
 	await vscode.commands.executeCommand("cursorMove", { "to": to, "by": "wrappedLine", "select": select })
 	scrollTo_cursor(textEditor)
 }
@@ -101,14 +101,14 @@ async function deleteChunk(textEditor: vscode.TextEditor, direction: Direction)
 {
 	switch (direction)
 	{
-		case Direction.Prev:
+		case Direction.prev:
 		{
 			await vscode.commands.executeCommand("cursorMove", { "to": "prevBlankLine", "by": "wrappedLine", "select": true })
 			await vscode.commands.executeCommand("deleteLeft")
 			break
 		}
 
-		case Direction.Next:
+		case Direction.next:
 		{
 			await vscode.commands.executeCommand("cursorMove", { "to": "nextBlankLine", "by": "wrappedLine", "select": true })
 			await vscode.commands.executeCommand("deleteRight")
@@ -122,7 +122,7 @@ function deleteLine_prev(textEditor: vscode.TextEditor, edit: vscode.TextEditorE
 	const deletedLines = new Set<number>
 	for (const selection of textEditor.selections)
 	{
-		if (selection.start.line == 0)
+		if (selection.start.line === 0)
 			continue
 
 		const selectedLine = selection.start.line
@@ -144,7 +144,7 @@ function deleteLine_next(textEditor: vscode.TextEditor, edit: vscode.TextEditorE
 	const deletedLines = new Set<number>
 	for (const selection of textEditor.selections)
 	{
-		if (selection.end.line == textEditor.document.lineCount - 1)
+		if (selection.end.line === textEditor.document.lineCount - 1)
 			continue
 
 		const selectedLine = selection.end.line
@@ -169,7 +169,7 @@ async function fold_definitions(textEditor: vscode.TextEditor, foldTypes: boolea
 	// NOTE: Multiple folding ranges can end on the same line.
 	// NOTE: I assume multiple folding ranges cannot start on the same line.
 
-	const isMarkdown = textEditor.document.languageId == 'markdown'
+	const isMarkdown = textEditor.document.languageId === 'markdown'
 	const foldStrings = isMarkdown
 
 	const documentSymbols = await cacheDocumentSymbols(textEditor)
@@ -298,7 +298,7 @@ function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit)
 		getLine    : textEditor.document.lineAt,
 		onError    : onError,
 	}
-	wrap_text(ctx)
+	wrapText(ctx)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -370,7 +370,7 @@ async function cacheDocumentSymbols(textEditor: vscode.TextEditor): Promise<Docu
 			{
 				for (const maybeParent of maybeParents)
 				{
-					if (maybeNested != maybeParent && maybeParent.range.contains(maybeNested.range))
+					if (maybeNested !== maybeParent && maybeParent.range.contains(maybeNested.range))
 					{
 						return mapNestedSymbol(maybeNested, maybeParent.children) ?? maybeParent
 					}
@@ -394,7 +394,7 @@ async function cacheDocumentSymbols(textEditor: vscode.TextEditor): Promise<Docu
 				}
 			}
 			for (const nested of nestedSymbols)
-				rootSymbols.splice(rootSymbols.findIndex(s => s == nested), 1)
+				rootSymbols.splice(rootSymbols.findIndex(s => s === nested), 1)
 		}
 		else
 		{
@@ -412,7 +412,7 @@ function removeDocumentSymbols(textDocument: vscode.TextDocument)
 	for (const pair of symbolNav.textDocumentSymbols)
 	{
 		const cachedTextDocument = pair[0]
-		if (cachedTextDocument == textDocument)
+		if (cachedTextDocument === textDocument)
 			toRemove.push(cachedTextDocument)
 	}
 
@@ -434,10 +434,10 @@ type NearestSymbols =
 
 enum HierarchyDirection
 {
-	Prev,
-	Next,
-	Parent,
-	Child,
+	prev,
+	next,
+	parent,
+	child,
 }
 
 function updateSymbolHighlights(textEditor: vscode.TextEditor)
@@ -446,8 +446,8 @@ function updateSymbolHighlights(textEditor: vscode.TextEditor)
 
 	// HACK: This is a workaround for https://github.com/microsoft/vscode/issues/181233
 	let isSelectionSame = true
-	isSelectionSame &&= documentSymbols != undefined
-	isSelectionSame &&= textEditor.selections.length == documentSymbols!.lastSelections?.length
+	isSelectionSame &&= documentSymbols !== undefined
+	isSelectionSame &&= textEditor.selections.length === documentSymbols!.lastSelections?.length
 	isSelectionSame &&= textEditor.selections.every((selection, i) => selection.isEqual(documentSymbols!.lastSelections![i]))
 
 	if (isSelectionSame)
@@ -569,24 +569,24 @@ async function cursorMoveTo_symbol(textEditor: vscode.TextEditor, direction: Hie
 		let newSymbol: vscode.DocumentSymbol | undefined
 		switch (direction)
 		{
-			case HierarchyDirection.Prev:
+			case HierarchyDirection.prev:
 				newSymbol = nearest.previous
 				documentSymbols.lastChildren.length = 0
 				break
 
-			case HierarchyDirection.Next:
+			case HierarchyDirection.next:
 				newSymbol = nearest.next
 				documentSymbols.lastChildren.length = 0
 				break
 
-			case HierarchyDirection.Parent:
+			case HierarchyDirection.parent:
 				newSymbol = nearest.parent
 				const lastChild = nearest.current ?? nearest.next ?? nearest.previous
 				if (nearest.parent && lastChild)
 					documentSymbols.lastChildren.push(lastChild)
 				break
 
-			case HierarchyDirection.Child:
+			case HierarchyDirection.child:
 				newSymbol = documentSymbols.lastChildren.pop() ?? nearest.child
 				break
 		}

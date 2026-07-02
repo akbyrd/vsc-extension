@@ -198,8 +198,8 @@ function consumeIndent(s: string, begin: number, width: number, tabSize: number)
 	{
 		const char = s[begin]
 
-		     if (char == ' ')  width += 1
-		else if (char == '\t') width = Math.floor((width + tabSize) / tabSize) * tabSize
+		     if (char === ' ')  width += 1
+		else if (char === '\t') width = Math.floor((width + tabSize) / tabSize) * tabSize
 		else break
 	}
 
@@ -245,8 +245,8 @@ function cachePrefixes(p: PrefixSet)
 	cache.db.prefixes.add(p)
 
 	const space = " ".charCodeAt(0)
-	while (p[1].align < p[1].chars.length && p[1].chars.charCodeAt(p[1].align) == space) p[1].align++
-	while (p[2].align < p[2].chars.length && p[2].chars.charCodeAt(p[2].align) == space) p[2].align++
+	while (p[1].align < p[1].chars.length && p[1].chars.charCodeAt(p[1].align) === space) p[1].align++
+	while (p[2].align < p[2].chars.length && p[2].chars.charCodeAt(p[2].align) === space) p[2].align++
 	p[1].chars = p[1].chars.slice(p[1].align, p[1].chars.length)
 	p[2].chars = p[2].chars.slice(p[2].align, p[2].chars.length)
 }
@@ -309,10 +309,10 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 					while (true)
 					{
 						const node       = startNode.previousSibling
-						const isComment  = node?.type == "comment"
+						const isComment  = node?.type === "comment"
 						const isLine     = node?.text.startsWith(lineComment)
-						const isAdjacent = node?.startPosition.row == startNode.startPosition.row - 1
-						const isTrailing = node?.startPosition.row == node?.previousSibling?.endPosition.row
+						const isAdjacent = node?.startPosition.row === startNode.startPosition.row - 1
+						const isTrailing = node?.startPosition.row === node?.previousSibling?.endPosition.row
 						if (isComment && isLine && isAdjacent && !isTrailing)
 						{
 							startNode = node
@@ -324,10 +324,10 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 					while (true)
 					{
 						const node       = endNode.nextSibling
-						const isComment  = node?.type == "comment"
+						const isComment  = node?.type === "comment"
 						const isLine     = node?.text.startsWith(lineComment)
-						const isAdjacent = node?.startPosition.row == endNode.startPosition.row + 1
-						const isTrailing = endNode.startPosition.row == endNode.previousSibling?.endPosition.row
+						const isAdjacent = node?.startPosition.row === endNode.startPosition.row + 1
+						const isTrailing = endNode.startPosition.row === endNode.previousSibling?.endPosition.row
 						if (isComment && isLine && isAdjacent && !isTrailing)
 						{
 							endNode = node
@@ -339,7 +339,7 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 					const start      = toPosition(startNode.startPosition)
 					const end        = toPosition(endNode.endPosition)
 					const prevEnd    = startNode.previousSibling?.endPosition
-					const isTrailing = prevEnd?.row == start.line
+					const isTrailing = prevEnd?.row === start.line
 					start.character  = isTrailing ? prevEnd.column : 0
 
 					blocks.push({
@@ -350,7 +350,7 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 						lineInfos:  [],
 						prefixes:   structuredClone(languageData.lineComment),
 						tokens:     [],
-					});
+					})
 				}
 				else
 				{
@@ -362,12 +362,12 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 						lineInfos:  [],
 						prefixes:   structuredClone(languageData.blockComment),
 						tokens:     [],
-					});
+					})
 				}
 			}
 		}
 	}
-	else if (ctx.languageId == "plaintext")
+	else if (ctx.languageId === "plaintext")
 	{
 		for (const selection of ctx.selections)
 		{
@@ -379,7 +379,7 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 				lineInfos:  [],
 				prefixes:   makePrefixSet(""),
 				tokens:     [],
-			});
+			})
 		}
 	}
 
@@ -488,7 +488,7 @@ function tokenizeBlock(ctx: Context, block: Block)
 				}
 
 				// Bullet (split when attached to first token)
-				if (lineInfo.type != LineType.bullet)
+				if (lineInfo.type !== LineType.bullet)
 				{
 					bulletRe.lastIndex = iChar
 					if ((match = bulletRe.exec(line.text)) && match.index < rLine.end.character)
@@ -515,7 +515,7 @@ function tokenizeBlock(ctx: Context, block: Block)
 			}
 
 			// Suffix (split when attached to last token)
-			if (block.type == BlockType.blockComment)
+			if (block.type === BlockType.blockComment)
 			{
 				// TODO: Attempt to simplify this
 				const lineInfo = block.lineInfos.at(-1)!
@@ -529,7 +529,7 @@ function tokenizeBlock(ctx: Context, block: Block)
 				{
 					const suffixLen = match[0].length
 					token.end -= suffixLen
-					if (useToken && token.end == token.begin)
+					if (useToken && token.end === token.begin)
 					{
 						lineInfo.tokenEnd--
 						block.tokens.pop()
@@ -575,21 +575,21 @@ function analyzeBlock(ctx: Context, block: Block)
 			if (lineInfo.isDoxygen)
 				continue
 
-			const isBlank = lineInfo.tokenBegin == lineInfo.tokenEnd
+			const isBlank = lineInfo.tokenBegin === lineInfo.tokenEnd
 			lineInfo.type = isBlank ? LineType.blank : lineInfo.type
 		}
 
 		for (var i = 0; i < block.lineInfos.length; i++)
 		{
 			const lineInfo = block.lineInfos[i]
-			if (lineInfo.type != LineType.blank) break
+			if (lineInfo.type !== LineType.blank) break
 			lineInfo.type = LineType.skip
 		}
 
 		for (var i = block.lineInfos.length - 1; i >= 0; i--)
 		{
 			const lineInfo = block.lineInfos[i]
-			if (lineInfo.type != LineType.blank) break
+			if (lineInfo.type !== LineType.blank) break
 			lineInfo.type = LineType.skip
 		}
 	}
@@ -600,7 +600,7 @@ function analyzeBlock(ctx: Context, block: Block)
 		{
 			const lineInfo = block.lineInfos[i]
 
-			if (lineInfo.type != LineType.bullet)
+			if (lineInfo.type !== LineType.bullet)
 				continue
 
 			const token     = lineInfo.prefix
@@ -624,7 +624,7 @@ function analyzeBlock(ctx: Context, block: Block)
 			{
 				const lineInfo = block.lineInfos[i + 1]
 
-				if (lineInfo .type == LineType.blank || lineInfo.type == LineType.bullet)
+				if (lineInfo .type === LineType.blank || lineInfo.type === LineType.bullet)
 					break
 
 				lineInfo.type = LineType.bullet
@@ -685,7 +685,7 @@ function analyzeBlock(ctx: Context, block: Block)
 		for (const lineInfo of block.lineInfos)
 		{
 			const isBulletContinuation = lineInfo.bullet.end > lineInfo.bullet.begin
-			if (lineInfo.type != lastType || isBulletContinuation)
+			if (lineInfo.type !== lastType || isBulletContinuation)
 			{
 				runLength = 0
 				lastType = lineInfo.type
@@ -729,10 +729,10 @@ function wrapBlock(ctx: Context, block: Block): string
 
 	for (const lineInfo of block.lineInfos)
 	{
-		if (lineInfo.type == LineType.skip)
+		if (lineInfo.type === LineType.skip)
 			continue
 
-		if (lineInfo.runLength == 0)
+		if (lineInfo.runLength === 0)
 		{
 			flush()
 			const align  = " ".repeat(lineInfo.alignWidth)
@@ -763,10 +763,10 @@ function wrapBlock(ctx: Context, block: Block): string
 	}
 	flush()
 
-	if (block.type == BlockType.blockComment)
+	if (block.type === BlockType.blockComment)
 	{
 		const suffix = block.prefixes[2].chars
-		if (lines.length == 1)
+		if (lines.length === 1)
 		{
 			const line = lines.pop() + ` ${suffix}`
 			lines.push(line)
@@ -783,7 +783,7 @@ function wrapBlock(ctx: Context, block: Block): string
 	return result
 }
 
-export async function wrap_text(ctx: Context): Promise<string[]>
+export async function wrapText(ctx: Context): Promise<string[]>
 {
 	console.assert(ctx.tabSize > 0)
 	console.assert(ctx.lineWidth >= 0)

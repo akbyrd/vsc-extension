@@ -1,6 +1,6 @@
 import { describe, it } from "node:test"
 import assert from "node:assert/strict"
-import { Position, Range, TextLine, Context, wrap_text } from "./wrapping.js"
+import { Position, Range, TextLine, Context, wrapText } from "./wrapping.js"
 
 async function wrap(s: string, override?: Partial<Context>): Promise<string | string[]>
 {
@@ -8,7 +8,7 @@ async function wrap(s: string, override?: Partial<Context>): Promise<string | st
 	for (var iChar = 0; iChar < s.length; ++iChar)
 	{
 		const c = s[iChar]
-		if (c == '\n')
+		if (c === '\n')
 			newLines.push(iChar + 1)
 	}
 	newLines.push(s.length + 1)
@@ -44,8 +44,8 @@ async function wrap(s: string, override?: Partial<Context>): Promise<string | st
 		onError    : console.log,
 	}
 
-	const wrapped = await wrap_text(ctx)
-	return wrapped.length == 1 ? wrapped[0] : wrapped
+	const wrapped = await wrapText(ctx)
+	return wrapped.length === 1 ? wrapped[0] : wrapped
 }
 
 async function test(original: string, expected: string | string[], override?: Partial<Context>)
@@ -315,8 +315,6 @@ describe("wrapping - block comments", () =>
 	it("empty/doxygen",    () => test("/* @endcode */", "/* @endcode */"))
 })
 
-// TODO: Remove linting?
-// TODO: Figure out why the watch script is no longer auto-running
 // TODO: Fix callstack in tests (pop the top)
 // TODO: Ensure debugging still works
 // TODO: Keybindings for tests
