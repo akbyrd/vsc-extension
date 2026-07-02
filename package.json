@@ -220,13 +220,14 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
+    "compile": "tsc",
+    "watch": "tsc --watch",
     "lint": "eslint src --ext ts",
-    "test": "tsc -p tsconfig.test.json && node --test \"out/**/*.test.js\""
+    "pretest": "tsc --build --clean",
+    "test": "tsc && node --test --no-experimental-strip-types --inspect --inspect-publish-uid=http"
   },
   "devDependencies": {
-    "@types/node": "16.x",
+    "@types/node": "18.x",
     "@types/vscode": "^1.75.0",
     "@typescript-eslint/eslint-plugin": "^5.45.0",
     "@typescript-eslint/parser": "^5.45.0",

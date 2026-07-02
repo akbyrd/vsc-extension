@@ -56,12 +56,27 @@ function test(name: string, original: string, expected: string | string[], overr
 	})
 }
 
+function only(name: string, original: string, expected: string | string[], override?: Partial<Context>)
+{
+	it.only(name, async () => {
+		const actual = await wrap(original, override)
+		assert.deepEqual(actual, expected)
+	})
+}
+
+function skip(name: string, original: string, expected: string | string[], override?: Partial<Context>)
+{
+	it.skip(name, async () => {
+		const actual = await wrap(original, override)
+		assert.deepEqual(actual, expected)
+	})
+}
+
 describe("wrap_text", () =>
 {
 	// ----------------------------------------------------------------------------------------------
 	// Line Comments
 
-if (true) {
 	// Test indentation
 	test("indent", "// asd",               "// asd")
 	test("indent", " // asd",              "// asd")
@@ -117,34 +132,34 @@ if (true) {
 	test("trailing/prefix",     "0; /// asd",        " /// asd")
 
 	// Test multi line
-	test("multiline",            "// asd\n// asd",   "// asd asd")
-	test("multiline",            "// asd\n// asd",   "// asd\n// asd", { lineWidth: 6 })
-	test("multiline",            "// asd\n\n// asd", [ "// asd", "// asd" ])
-	test("multiline/indent",     "\t// asd\n// asd", "\t// asd\n\t// asd", { lineWidth: 6 })
-	test("multiline/head-space", "//asd\n// asd",    "// asd\n// asd", { lineWidth: 6 })
-	test("multiline/tail-space", "// asd \n// asd ", "// asd\n// asd", { lineWidth: 6 })
-	test("multiline/prefix",     "/// asd\n// asd",  "/// asd\n/// asd", { lineWidth: 6 })
-	test("multiline/trailing",   "0; // asd\n// asd",  [ " // asd", "// asd" ])
+	test("multiline",            "// asd\n// asd",    "// asd asd")
+	test("multiline",            "// asd\n// asd",    "// asd\n// asd",       { lineWidth: 6 })
+	test("multiline",            "// asd\n\n// asd",  [ "// asd", "// asd" ])
+	test("multiline/indent",     "\t// asd\n// asd",  "\t// asd\n\t// asd",   { lineWidth: 6 })
+	test("multiline/head-space", "//asd\n// asd",     "// asd\n// asd",       { lineWidth: 6 })
+	test("multiline/tail-space", "// asd \n// asd ",  "// asd\n// asd",       { lineWidth: 6 })
+	test("multiline/prefix",     "/// asd\n// asd",   "/// asd\n/// asd",     { lineWidth: 6 })
+	test("multiline/trailing",   "0; // asd\n// asd", [ " // asd", "// asd" ])
 
 	// Test narrow lines
-	test("narrow",            "// asd",                 "// asd", { lineWidth: 0 })
-	test("narrow",            "// asd asd",             "// asd\n// asd", { lineWidth: 0 })
+	test("narrow",            "// asd",                 "// asd",                         { lineWidth: 0 })
+	test("narrow",            "// asd asd",             "// asd\n// asd",                 { lineWidth: 0 })
 	test("narrow/multiline",  "// asd asd\n// asd asd", "// asd\n// asd\n// asd\n// asd", { lineWidth: 0 })
-	test("narrow/indent",     "\t// asd asd",           "\t// asd\n\t// asd", { lineWidth: 0 })
-	test("narrow/head-space", "//asd asd",              "// asd\n// asd", { lineWidth: 0 })
-	test("narrow/tail-space", "// asd asd ",            "// asd\n// asd", { lineWidth: 0 })
-	test("narrow/prefix",     "/// asd asd",            "/// asd\n/// asd", { lineWidth: 0 })
-	test("narrow/trailing",   "0; // asd",              " // asd", { lineWidth: 0 })
+	test("narrow/indent",     "\t// asd asd",           "\t// asd\n\t// asd",             { lineWidth: 0 })
+	test("narrow/head-space", "//asd asd",              "// asd\n// asd",                 { lineWidth: 0 })
+	test("narrow/tail-space", "// asd asd ",            "// asd\n// asd",                 { lineWidth: 0 })
+	test("narrow/prefix",     "/// asd asd",            "/// asd\n/// asd",               { lineWidth: 0 })
+	test("narrow/trailing",   "0; // asd",              " // asd",                         { lineWidth: 0 })
 
 	// Test preserved newlines
-	test("newline",           "// asd\n//\n//\n// asd",     "// asd\n//\n// asd")
-	test("newline",           "//\n// asd",                 "// asd")
-	test("newline",           "// asd\n//",                 "// asd")
-	test("newline",           "// asd\n// \n// asd",        "// asd\n//\n// asd")
-	test("newline",           "// asd\n//    \n// asd",     "// asd\n//\n// asd")
-	test("newline",           "// asd\n//\t\n// asd",       "// asd\n//\n// asd")
-	test("newline/multiline", "// asd\n// asd\n//\n// asd", "// asd asd\n//\n// asd")
-	test("newline/indent",    "\t// asd\n\t//\n\t// asd",   "\t// asd\n\t//\n\t// asd")
+	test("newline",            "// asd\n//\n//\n// asd",     "// asd\n//\n// asd")
+	test("newline",            "//\n// asd",                 "// asd")
+	test("newline",            "// asd\n//",                 "// asd")
+	test("newline",            "// asd\n// \n// asd",        "// asd\n//\n// asd")
+	test("newline",            "// asd\n//    \n// asd",     "// asd\n//\n// asd")
+	test("newline",            "// asd\n//\t\n// asd",       "// asd\n//\n// asd")
+	test("newline/multiline",  "// asd\n// asd\n//\n// asd", "// asd asd\n//\n// asd")
+	test("newline/indent",     "\t// asd\n\t//\n\t// asd",   "\t// asd\n\t//\n\t// asd")
 	test("newline/head-space", "//asd\n//\n//asd",           "// asd\n//\n// asd")
 	test("newline/tail-space", "// asd \n// \n// asd ",      "// asd\n//\n// asd")
 	test("newline/prefix",     "/// asd\n///\n/// asd",      "/// asd\n///\n/// asd")
@@ -171,7 +186,7 @@ if (true) {
 	test("bullet/tail-space", "//  * asd ",                "//  * asd")
 	test("bullet/prefix",     "///  * asd",                "///  * asd")
 	test("bullet/trailing",   "0; //  * asd",              " //  * asd")
-	test("bullet/narrow",     "//  * asd",                 "//  * asd", { lineWidth: 0 })
+	test("bullet/narrow",     "//  * asd",                 "//  * asd",            { lineWidth: 0 })
 	test("bullet/narrow",     "//  * asd asd",             "//  * asd\n//    asd", { lineWidth: 0 })
 	test("bullet/newline",    "//  * asd\n//\n//  * asd",  "//  * asd\n//\n//  * asd")
 
@@ -240,23 +255,24 @@ if (true) {
 	test("prefix",            "/*! asd */",           "/*! asd */")
 	test("prefix",            "/*< asd */",           "/*< asd */")
 	test("prefix",            "/**!< asd */",         "/**!< asd */")
-	test("prefix",            "/* asd\nasd\n */",     "/* asd\n * asd\n */", { lineWidth: 0 })
+	test("prefix",            "/* asd\nasd\n */",     "/* asd\n * asd\n */",  { lineWidth: 0 })
 	test("prefix",            "/** asd\n * asd\n */", "/** asd\n * asd\n */", { lineWidth: 0 })
 	test("prefix/indent",     "\t/** asd */",         "\t/** asd */")
 	test("prefix/head-space", "/**asd */",            "/** asd */")
 	test("prefix/tail-space", "/** asd*/",            "/** asd */")
-}
 
-if (false) {
 	// Test custom suffix
-	test("suffix",            "/* asd **/",   "/** asd **/")
-	test("suffix",            "/* asd !*/",   "/*! asd !*/")
-	test("suffix",            "/* asd <*/",   "/*< asd <*/")
+	test("suffix",            "/* asd **/",   "/* asd **/")
+	test("suffix",            "/* asd !*/",   "/* asd !*/")
+	test("suffix",            "/* asd <*/",   "/* asd <*/")
 	test("suffix",            "/* asd *!<*/", "/* asd *!<*/")
 	test("suffix/indent",     "\t/* asd **/", "\t/* asd **/")
 	test("suffix/head-space", "/*asd **/",    "/* asd **/")
 	test("suffix/tail-space", "/* asd**/",    "/* asd **/")
 	test("suffix/prefix",     "/** asd **/",  "/** asd **/")
+
+	// Test leading
+	// TODO: Add tests
 
 	// Test trailing
 	test("trailing",            "0; /* asd */",   " /* asd */")
@@ -268,37 +284,36 @@ if (false) {
 	// TODO: Multi-line?
 
 	// Test embedded
-	test("embedded",            "foo(/* asd */ x);",   "foo(/* asd */ x);")
-	test("embedded/indent",     "foo(\t/* asd */ x);", "foo(/* asd */ x);")
-	test("embedded/head-space", "foo(/*asd */ x);",    "foo(/* asd */ x);")
-	test("embedded/tail-space", "foo(/* asd*/ x);",    "foo(/* asd */ x);")
-	test("embedded/prefix",     "foo(/** asd */ x);",  "foo(/** asd */ x);")
-	test("embedded/suffix",     "foo(/* asd **/ x);",  "foo(/* asd **/ x);")
-	test("embedded/trailing",   "foo(/* asd */ x);",   "foo(/* asd */ x);")
+	test("embedded",            "foo(/* asd */ x);",   "/* asd */")
+	test("embedded/indent",     "foo(\t/* asd */ x);", "/* asd */")
+	test("embedded/head-space", "foo(/*asd */ x);",    "/* asd */")
+	test("embedded/tail-space", "foo(/* asd*/ x);",    "/* asd */")
+	test("embedded/prefix",     "foo(/** asd */ x);",  "/** asd */")
+	test("embedded/suffix",     "foo(/* asd **/ x);",  "/* asd **/")
+	test("embedded/trailing",   "foo(/* asd */ x);",   " /* asd */")
 	// TODO: Multi-line?
 
 	// Test multi line
 	test("multiline",            "/* asd\n * asd\n */",     "/* asd asd */")
-	test("multiline",            "/* asd\n * asd\n */",     "/* asd\nasd\n */", { lineWidth: 6 })
-	test("multiline",            "/* asd\n * asd\n */",     "/* asd\n * asd\n */", { lineWidth: 6 })
+	test("multiline",            "/* asd\n * asd\n */",     "/* asd\n * asd\n */",       { lineWidth: 6 })
 	test("multiline",            "/* asd\n\n*/",            "/* asd */")
 	test("multiline/indent",     "\t/* asd\n* asd\n*/",     "\t/* asd\n\t * asd\n\t */", { lineWidth: 6 })
-	test("multiline/head-space", "/*asd\n *asd\n*/",        "/* asd\n * asd\n */", { lineWidth: 6 })
-	test("multiline/tail-space", "/* asd \n * asd \n*/",    "/* asd\n * asd\n */", { lineWidth: 6 })
-	test("multiline/prefix",     "/** asd\n ** asd */",     "/** asd\n ** asd */", { lineWidth: 6 })
-	test("multiline/suffix",     "/* asd\n * asd **/",      "/* asd\n * asd **/", { lineWidth: 6 })
+	test("multiline/head-space", "/*asd\n *asd\n*/",        "/* asd\n * asd\n */",       { lineWidth: 6 })
+	test("multiline/tail-space", "/* asd \n * asd \n*/",    "/* asd\n * asd\n */",       { lineWidth: 6 })
+	test("multiline/prefix",     "/** asd\n ** asd */",     "/** asd\n ** asd\n */",     { lineWidth: 6 })
+	test("multiline/suffix",     "/* asd\n * asd **/",      "/* asd\n * asd\n **/",      { lineWidth: 6 })
 	test("multiline/trailing",   "0; /* asd */\n/* asd */", [ " /* asd */", "/* asd */" ])
 
 	// Test narrow lines
-	test("narrow",            "/* asd */",               "/* asd */", { lineWidth: 0 })
-	test("narrow",            "/* asd asd */",           "/* asd\n * asd\n */", { lineWidth: 0 })
-	test("narrow/multiline",  "/* asd asd * asd asd */", "/* asd\n * asd\n * asd\n * asd\n */", { lineWidth: 0 })
-	test("narrow/indent",     "\t/* asd asd */",         "\t/* asd\n\t * asd\n\t */", { lineWidth: 0 })
-	test("narrow/head-space", "/*asd asd */",            "/* asd\n * asd\n */", { lineWidth: 0 })
-	test("narrow/tail-space", "/* asd asd*/",            "/* asd\n * asd\n */", { lineWidth: 0 })
-	test("narrow/prefix",     "/** asd asd */",          "/** asd\n * asd\n */", { lineWidth: 0 })
-	test("narrow/suffix",     "/* asd asd **/",          "/* asd\n * asd\n **/", { lineWidth: 0 })
-	test("narrow/trailing",   "0; /* asd */",            " /* asd */", { lineWidth: 0 })
+	test("narrow",            "/* asd */",                 "/* asd */",                           { lineWidth: 0 })
+	test("narrow",            "/* asd asd */",             "/* asd\n * asd\n */",                 { lineWidth: 0 })
+	test("narrow/multiline",  "/* asd asd\n * asd asd */", "/* asd\n * asd\n * asd\n * asd\n */", { lineWidth: 0 })
+	test("narrow/indent",     "\t/* asd asd */",           "\t/* asd\n\t * asd\n\t */",           { lineWidth: 0 })
+	test("narrow/head-space", "/*asd asd */",              "/* asd\n * asd\n */",                 { lineWidth: 0 })
+	test("narrow/tail-space", "/* asd asd*/",              "/* asd\n * asd\n */",                 { lineWidth: 0 })
+	test("narrow/prefix",     "/** asd asd */",            "/** asd\n *  asd\n */",               { lineWidth: 0 })
+	test("narrow/suffix",     "/* asd asd **/",            "/* asd\n * asd\n **/",                { lineWidth: 0 })
+	test("narrow/trailing",   "0; /* asd */",              " /* asd */",                           { lineWidth: 0 })
 
 	// Test preserved newlines
 	// Test preserved bullets
@@ -319,7 +334,10 @@ if (false) {
 	test("empty/newline",    "/*\n */",        "")
 	test("empty/newline",    "/*\n *\n */",    "")
 	test("empty/doxygen",    "/* @endcode */", "/* @endcode */")
-
-	// TODO: Want first line to be prefix only
-}
 })
+
+// TODO: Show test results in vscode
+// TODO: Remove linting?
+// TODO: Show line numbers for .ts file instead of .js
+// TODO: Get F5 working for wrapping
+// TODO: Custom test reporter
