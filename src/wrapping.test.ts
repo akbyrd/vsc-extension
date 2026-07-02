@@ -51,7 +51,17 @@ async function wrap(s: string, override?: Partial<Context>): Promise<string | st
 async function test(original: string, expected: string | string[], override?: Partial<Context>)
 {
 	const actual = await wrap(original, override)
-	assert.deepEqual(actual, expected)
+
+	try
+	{
+		assert.deepEqual(actual, expected)
+	}
+	catch (e)
+	{
+		assert(e instanceof Error)
+		Error.captureStackTrace(e, test)
+		throw e
+	}
 }
 
 describe("wrapping - line comments", () =>
@@ -315,7 +325,6 @@ describe("wrapping - block comments", () =>
 	it("empty/doxygen",    () => test("/* @endcode */", "/* @endcode */"))
 })
 
-// TODO: Fix callstack in tests (pop the top)
 // TODO: Ensure debugging still works
 // TODO: Keybindings for tests
 // test current line, file, project, solution
