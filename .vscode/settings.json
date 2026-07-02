@@ -1,11 +1,11 @@
 {
-    "search.exclude": {
-        "out": true,
-    },
+	"search.exclude": {
+		"out": true,
+	},
 
-    // Turn off tsc task auto detection since we have the necessary tasks as npm scripts
-    "js/ts.tsc.autoDetect": "off",
+	// Turn off tsc task auto detection since we have the necessary tasks as npm scripts
+	"js/ts.tsc.autoDetect": "off",
 
-    // Use the installed version, instead of the one bundled with vscode
-    "js/ts.tsdk.path": "node_modules\\typescript\\lib",
+	// Use the installed version, instead of the one bundled with vscode
+	"js/ts.tsdk.path": "node_modules\\typescript\\lib",
 }
