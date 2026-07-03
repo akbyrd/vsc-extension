@@ -355,8 +355,8 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 				else
 				{
 					const node       = capture.node
-					const isTrailing = node.startPosition.row == node.previousSibling?.endPosition.row
-					const isLeading  = node.endPosition.row == node.nextSibling?.startPosition.row
+					const isTrailing = node.startPosition.row === node.previousSibling?.endPosition.row
+					const isLeading  = node.endPosition.row === node.nextSibling?.startPosition.row
 
 					blocks.push({
 						type:       BlockType.blockComment,
@@ -704,31 +704,28 @@ function wrapBlock(ctx: Context, block: Block): string
 	// * Line prefixes added to continuation lines of block comments
 	// * Whitespace between content tokens is replaced with a single space
 
+	// NOTE: Line layout
+	// First line    - <indent><prefixAlign><prefix><contentAlign><bullet><content>
+	// Continue line - <indent><prefixAlign><prefix><contentAlign><bulletAlign><content>
+
 	const lines : string[] = []
 
-	const lineWidth    = block.isEmbedded ? Number.POSITIVE_INFINITY : ctx.lineWidth
-	const indentWidth  = block.lineInfos[0].indentWidth
-	const indent       = ctx.useSpaces ? " ".repeat(indentWidth) : "\t".repeat(indentWidth / ctx.tabSize)
-	const p1           = block.prefixes[1]
-	const prefix       = " ".repeat(p1.align) + p1.chars
+	const lineWidth   = block.isEmbedded ? Number.POSITIVE_INFINITY : ctx.lineWidth
+	const indentWidth = block.lineInfos[0].indentWidth
+	const indent      = ctx.useSpaces ? " ".repeat(indentWidth) : "\t".repeat(indentWidth / ctx.tabSize)
+	const p1          = block.prefixes[1]
+	const prefix      = " ".repeat(p1.align) + p1.chars
+	const leader      = `${indent}${prefix}`
 
-	var leader  = ""
-	var content = ""
-
-	if (block.type == BlockType.blockComment)
-	{
-		const prefix = block.prefixes[0].chars
-		const line   = `${indent}${prefix}`
-		lines.push(line)
-	}
+	var flushCount = 0
+	var bullet     = ""
+	var content    = ""
 
 	function flush()
 	{
-		if (leader)
+		if (flushCount++ !== 0)
 		{
-			lines.push(leader + content)
-
-			leader  = ""
+			lines.push(`${leader}${bullet}${content}`)
 			content = ""
 		}
 	}
@@ -740,11 +737,10 @@ function wrapBlock(ctx: Context, block: Block): string
 
 		if (lineInfo.runLength === 0)
 		{
-			// TODO: I think this needs to use prefixAlign too
 			flush()
-			const align  = " ".repeat(lineInfo.alignWidth)
-			const bullet = lineInfo.text.slice(lineInfo.bullet.begin, lineInfo.bullet.end)
-			leader = `${indent}${prefix}${align}${bullet}`
+			const contentAlign = " ".repeat(lineInfo.alignWidth)
+			const bulletToken  = lineInfo.text.slice(lineInfo.bullet.begin, lineInfo.bullet.end)
+			bullet = `${contentAlign}${bulletToken}`
 		}
 
 		for (var i = lineInfo.tokenBegin; i < lineInfo.tokenEnd; i++)
@@ -756,20 +752,8 @@ function wrapBlock(ctx: Context, block: Block): string
 
 			if (overflow)
 			{
-				// TODO: Fix alignment
-				// TODO: Bake prefix alignment into chars
-
-				// First line    - <indent><prefixAlign><prefix><bulletAlign><bullet>     <content>
-				// Continue line - <indent><prefixAlign><prefix><bulletAlign><contentAlign><content>
-				//                         ^                    ^            ^
-				//                         |                    |            from bullet length
-				//                         |                    from prefix length
-				//                         from language default
-
 				flush()
-				const align  = " ".repeat(lineInfo.alignWidth) // TODO: Has to come from the first line
-				const bulletAlign = " ".repeat(0)
-				leader = `${indent}${prefix}${align}${bulletAlign}`
+				bullet = " ".repeat(bullet.length)
 			}
 
 			const tokenStr = lineInfo.text.slice(token.begin, token.end)
@@ -780,17 +764,40 @@ function wrapBlock(ctx: Context, block: Block): string
 
 	if (block.type === BlockType.blockComment)
 	{
-		const suffix = block.prefixes[2].chars
-		if (lines.length === 1)
+		const p0 = block.prefixes[0]
+		const p2 = block.prefixes[2]
+
+		switch (lines.length)
 		{
-			const line = lines.pop() + ` ${suffix}`
-			lines.push(line)
-		}
-		else
-		{
-			const align = " ".repeat(block.prefixes[2].align)
-			const line  = `${indent}${align}${suffix}`
-			lines.push(line)
+			case 0:
+				break
+
+			case 1:
+			{
+				// TODO: Only if it fits
+				if (!bullet)
+				{
+					const prefix  = p0.chars
+					const suffix  = p2.chars
+					const content = lines[0].substring(leader.length)
+					const line    = `${indent}${prefix}${content} ${suffix}`
+					lines[0] = line
+					break
+				}
+				// Fallthrough
+			}
+
+			default:
+			{
+				const prefix = " ".repeat(p0.align) + p0.chars
+				const line0   = `${indent}${prefix}`
+				lines.splice(0, 0, line0)
+
+				const suffix = " ".repeat(p2.align) + p2.chars
+				const lineN   = `${indent}${suffix}`
+				lines.push(lineN)
+				break
+			}
 		}
 	}
 
