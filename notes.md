@@ -28,16 +28,18 @@ for (const ext of vscode.extensions.all)
 Testing
 -------
 vscode testing
+	All tests show up in a dedicated activity bar view
+	Separate results panel is a waste of space
+	Can run tests from gutter in test files
+	Results panel doesn't show test output
 	Inline error is really nice
-	Inline error points to wrapper function
 	No way to disable tests in the UI
-	Rerun failed tests button is only in the results panel
-	Can run tests from gutter in test file
+	No "re-run failed tests" button in the view, only the panel
 
 connor4312.nodejs-testing
-	Doesn't support it.only, it.skip
+	Mostly "just works"
+	Doesn't compile tests before running
+	Doesn't support it.only and it.skip
+	Doesn't support continuous running
 	Doesn't support tests with the same name
 	Doesn't support wrapper functions inside the same file
-	Test output doesn't lead back to failed tests
-	Doesn't compile tests before running
-	Doesn't support continuous running

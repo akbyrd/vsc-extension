@@ -481,12 +481,10 @@ describe("block comments", () =>
 	})
 })
 
-// TODO: Compile before running tests (currently leaning on the watch script)
 // TODO: Enable more linting
 // TODO: Delay error lens visuals
 // TODO: Keybindings for tests
 // test current line, file, project, solution
 // test and debug current line, file, project, solution
 // rerun failed tests
-// TODO: Show line numbers for .ts file instead of .js
 // TODO: Custom test reporter
