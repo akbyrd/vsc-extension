@@ -167,7 +167,8 @@ type Block = {
 	type       : BlockType,
 	range      : Range,
 	languageId : string
-	isEmbedded : boolean,
+	isLeading  : boolean,
+	isTrailing : boolean,
 	lineInfos  : LineInfo[],
 	prefixes   : PrefixSet,
 	tokens     : Token[],
@@ -205,11 +206,6 @@ function consumeIndent(s: string, begin: number, width: number, tabSize: number)
 
 	const spaces = width - prevWidth
 	return spaces
-}
-
-function assert(value: unknown): asserts value
-{
-	console.assert(value)
 }
 
 async function parseDocument(ctx: Context): Promise<Parse|undefined>
@@ -346,7 +342,8 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 						type:       BlockType.lineComment,
 						range:      new Range(start, end),
 						languageId: ctx.languageId,
-						isEmbedded: isTrailing,
+						isLeading:  false,
+						isTrailing: isTrailing,
 						lineInfos:  [],
 						prefixes:   structuredClone(languageData.lineComment),
 						tokens:     [],
@@ -362,7 +359,8 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 						type:       BlockType.blockComment,
 						range:      toRange(capture.node),
 						languageId: ctx.languageId,
-						isEmbedded: isTrailing || isLeading,
+						isLeading:  isLeading,
+						isTrailing: isTrailing,
 						lineInfos:  [],
 						prefixes:   structuredClone(languageData.blockComment),
 						tokens:     [],
@@ -379,7 +377,8 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 				type:       BlockType.prose,
 				range:      selection,
 				languageId: ctx.languageId,
-				isEmbedded: false,
+				isLeading:  false,
+				isTrailing: false,
 				lineInfos:  [],
 				prefixes:   makePrefixSet(""),
 				tokens:     [],
@@ -557,7 +556,7 @@ function analyzeBlock(ctx: Context, block: Block)
 {
 	// Detect indentation
 	{
-		if (!block.isEmbedded)
+		if (!block.isTrailing)
 		{
 			const lineInfo = block.lineInfos[0]
 			lineInfo.indentWidth = consumeIndent(lineInfo.text, 0, 0, ctx.tabSize)
@@ -710,7 +709,7 @@ function wrapBlock(ctx: Context, block: Block): string
 
 	const lines : string[] = []
 
-	const lineWidth   = block.isEmbedded ? Number.POSITIVE_INFINITY : ctx.lineWidth
+	const lineWidth   = block.isLeading || block.isTrailing ? Number.POSITIVE_INFINITY : ctx.lineWidth
 	const indentWidth = block.lineInfos[0].indentWidth
 	const indent      = ctx.useSpaces ? " ".repeat(indentWidth) : "\t".repeat(indentWidth / ctx.tabSize)
 	const p1          = block.prefixes[1]
@@ -774,11 +773,14 @@ function wrapBlock(ctx: Context, block: Block): string
 
 			case 1:
 			{
-				// TODO: Only if it fits
-				if (!bullet)
+				const prefix     = p0.chars
+				const suffix     = p2.chars
+				const contentLen = lines[0].length - leader.length
+				const extraLen   = indent.length + prefix.length + suffix.length + 1
+				const doesFit    = contentLen + extraLen <= lineWidth
+
+				if (doesFit)
 				{
-					const prefix  = p0.chars
-					const suffix  = p2.chars
 					const content = lines[0].substring(leader.length)
 					const line    = `${indent}${prefix}${content} ${suffix}`
 					lines[0] = line
@@ -885,6 +887,7 @@ const languages: Record<string, LanguageData> = {
 	},
 }
 
+// TODO: Rename tabSize to tabWidth
 // TODO: Try to split "prefix custom" out of prefix
 // TODO: Change tokenEnd to tokenCount
 // TODO: Split indentation and custom whitespace
