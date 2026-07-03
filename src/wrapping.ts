@@ -88,7 +88,7 @@ export type TextLine = {
 }
 
 export type Context = {
-	tabSize    : number,
+	tabWidth    : number,
 	useSpaces  : boolean,
 	lineWidth  : number,
 	languageId : string,
@@ -559,8 +559,8 @@ function analyzeBlock(ctx: Context, block: Block)
 		if (!block.isTrailing)
 		{
 			const lineInfo = block.lineInfos[0]
-			lineInfo.indentWidth = consumeIndent(lineInfo.text, 0, 0, ctx.tabSize)
-			lineInfo.indentWidth = Math.floor(lineInfo.indentWidth / ctx.tabSize) * ctx.tabSize
+			lineInfo.indentWidth = consumeIndent(lineInfo.text, 0, 0, ctx.tabWidth)
+			lineInfo.indentWidth = Math.floor(lineInfo.indentWidth / ctx.tabWidth) * ctx.tabWidth
 		}
 	}
 
@@ -609,13 +609,13 @@ function analyzeBlock(ctx: Context, block: Block)
 			{
 				const width = lineInfo.indentWidth + (lineInfo.prefix.end - lineInfo.prefix.begin)
 				const begin = lineInfo.prefix.end
-				const align = consumeIndent(lineInfo.text, begin, width, ctx.tabSize)
+				const align = consumeIndent(lineInfo.text, begin, width, ctx.tabWidth)
 				lineInfo.alignWidth = Math.max(1, align)
 			}
 			else
 			{
 				const offset = lineInfo.indentWidth
-				const align  = consumeIndent(lineInfo.text, 0, 0, ctx.tabSize)
+				const align  = consumeIndent(lineInfo.text, 0, 0, ctx.tabWidth)
 				lineInfo.alignWidth = Math.max(1, align - offset)
 			}
 
@@ -711,7 +711,7 @@ function wrapBlock(ctx: Context, block: Block): string
 
 	const lineWidth   = block.isLeading || block.isTrailing ? Number.POSITIVE_INFINITY : ctx.lineWidth
 	const indentWidth = block.lineInfos[0].indentWidth
-	const indent      = ctx.useSpaces ? " ".repeat(indentWidth) : "\t".repeat(indentWidth / ctx.tabSize)
+	const indent      = ctx.useSpaces ? " ".repeat(indentWidth) : "\t".repeat(indentWidth / ctx.tabWidth)
 	const p1          = block.prefixes[1]
 	const prefix      = " ".repeat(p1.align) + p1.chars
 	const leader      = `${indent}${prefix}`
@@ -809,7 +809,7 @@ function wrapBlock(ctx: Context, block: Block): string
 
 export async function wrapText(ctx: Context): Promise<string[]>
 {
-	console.assert(ctx.tabSize > 0)
+	console.assert(ctx.tabWidth > 0)
 	console.assert(ctx.lineWidth >= 0)
 
 	const parse  = await parseDocument(ctx)
@@ -887,7 +887,6 @@ const languages: Record<string, LanguageData> = {
 	},
 }
 
-// TODO: Rename tabSize to tabWidth
 // TODO: Try to split "prefix custom" out of prefix
 // TODO: Change tokenEnd to tokenCount
 // TODO: Split indentation and custom whitespace

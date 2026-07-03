@@ -289,7 +289,7 @@ function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit)
 	}
 
 	const ctx : Context = {
-		tabSize    : textEditor.options.tabSize as number,
+		tabWidth   : textEditor.options.tabSize as number,
 		useSpaces  : textEditor.options.insertSpaces as boolean,
 		lineWidth  : 120,
 		languageId : textEditor.document.languageId,

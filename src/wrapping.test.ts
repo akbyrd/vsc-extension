@@ -34,7 +34,7 @@ async function wrap(s: string, override?: Partial<Context>): Promise<string | st
 	const selection  = new Range(begin, end)
 
 	const ctx : Context = {
-		tabSize    : override?.tabSize ?? 4,
+		tabWidth   : override?.tabWidth ?? 4,
 		useSpaces  : override?.useSpaces ?? false,
 		lineWidth  : override?.lineWidth ?? 60,
 		languageId : override?.languageId ?? languageId,
@@ -164,8 +164,8 @@ describe("wrapping - line comments", () =>
 	it("bullet 6",          () => test("//   * asd",                "//   * asd"))
 	it("bullet 7",          () => test("//    * asd",               "//    * asd"))
 	it("bullet 8",          () => test("//     * asd",              "//     * asd"))
-	it("bullet 9",          () => test("//\t* asd",                 "//  * asd", { tabSize: 4 }))
-	it("bullet 10",         () => test("// \t* asd",                "//  * asd", { tabSize: 4 }))
+	it("bullet 9",          () => test("//\t* asd",                 "//  * asd", { tabWidth: 4 }))
+	it("bullet 10",         () => test("// \t* asd",                "//  * asd", { tabWidth: 4 }))
 	it("bullet 11",         () => test("//  * asd\n//  * asd",      "//  * asd\n//  * asd"))
 	it("bullet 12",         () => test("//  * asd\n//    * asd",    "//  * asd\n//    * asd"))
 	it("bullet/indent",     () => test("\t//  * asd",               "\t//  * asd"))
@@ -336,8 +336,8 @@ describe("wrapping - block comments", () =>
 	it("bullet 3",          () => test("/* 1. asd */",                 "/* 1. asd */"))
 	it("bullet 4",          () => test("/* 1) asd */",                 "/* 1) asd */"))
 	it("bullet 5",          () => test("/*  * asd */",                 "/*  * asd */"))
-	it("bullet 6",          () => test("/*\t* asd */",                 "/*  * asd */", { tabSize: 4 }))
-	it("bullet 7",          () => test("/* \t* asd */",                "/*  * asd */", { tabSize: 4 }))
+	it("bullet 6",          () => test("/*\t* asd */",                 "/*  * asd */", { tabWidth: 4 }))
+	it("bullet 7",          () => test("/* \t* asd */",                "/*  * asd */", { tabWidth: 4 }))
 	it("bullet 8",          () => test("/*  * asd\n *  * asd */",      "/*\n *  * asd\n *  * asd\n */"))
 	it("bullet 9",          () => test("/*  * asd\n *    * asd */",    "/*\n *  * asd\n *    * asd\n */"))
 	it("bullet/indent",     () => test("\t/*  * asd */",               "\t/*  * asd */"))
