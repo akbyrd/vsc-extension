@@ -512,6 +512,7 @@ describe("block comments", () =>
 	})
 })
 
+// TODO: File a bug report for auto-attaching the debugger
 // TODO: Enable more linting
 // TODO: Delay error lens visuals
 // TODO: Keybindings for tests
