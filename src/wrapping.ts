@@ -5,11 +5,11 @@ class Cache
 	db = {
 		prefixes: new Set<PrefixSet>(),
 		fetch:    new Map<string, Uint8Array>(),
+		parser:   new Map<string, ts.Parser>(),
 	}
 
 	async fetch(url: string, storage: Storage): Promise<Uint8Array>
 	{
-
 		// Check the memory cache first
 		const memCached = this.db.fetch.get(url)
 		if (memCached) return memCached
@@ -34,6 +34,23 @@ class Cache
 		await storage.write(key, bytes)
 		this.db.fetch.set(url, bytes)
 		return bytes
+	}
+
+	async parser(url: string, storage: Storage): Promise<ts.Parser>
+	{
+		// Check the memory cache first
+		const memCached = this.db.parser.get(url)
+		if (memCached) return memCached
+
+		// Construct parser if not cached
+		await ts.Parser.init()
+		const wasm     = await cache.fetch(url, storage)
+		const language = await ts.Language.load(wasm)
+		const parser   = new ts.Parser().setLanguage(language)
+
+		// Cache the result in memory
+		this.db.parser.set(url, parser)
+		return parser
 	}
 }
 
@@ -212,12 +229,9 @@ async function parseDocument(ctx: Context): Promise<Parse|undefined>
 	{
 		try
 		{
-			await ts.Parser.init()
-			const wasm     : Uint8Array  = await cache.fetch(languageData.grammar, ctx.storage)
-			const language : ts.Language = await ts.Language.load(wasm)
-			const parser   : ts.Parser   = new ts.Parser().setLanguage(language)
-			const text     : string      = ctx.getText()
-			const tree     : ts.Tree     = parser.parse(text)!
+			const parser = await cache.parser(languageData.grammar, ctx.storage)
+			const text   = ctx.getText()
+			const tree   = parser.parse(text)!
 			console.assert(tree)
 
 			return { parser, tree }
@@ -888,16 +902,9 @@ const languages: Record<string, LanguageData> = {
 // TODO: Handle multiple fetches at the same time
 // TODO: Multi-thread tests (and synchronize tests around disk access)
 // TODO: Add a test to ensure file names are unique for grammars
-
 // TODO: Try to split "prefix custom" out of prefix
-// TODO: Change tokenEnd to tokenCount
 // TODO: Split indentation and custom whitespace
 // TODO: Change customPrefix slice to a lazy resolve
-// TODO: Cache parser
-// TODO: Cache language results
-// TODO: Cache parse results
-// TODO: Cache query results
-// TODO: Move prefixes into the cache
 // TODO: Apply edits in vscode
 // TODO: Better exporting from this file
 // TODO: Have AI implement from scratch and compare
