@@ -88,6 +88,13 @@ async function test(original: string, expected: string | string[], override?: Pa
 		Error.captureStackTrace(e, test)
 		throw e
 	}
+
+	// TODO: Try to put this in the reporter
+	// Put it in the reporter if it works with the vscode test view
+	// Otherwise put it in wrapping.test.ts
+
+	// NOTE: We need to do something async so test results are flushed and can stream
+	await new Promise(setImmediate)
 }
 
 describe("line comments", () =>
