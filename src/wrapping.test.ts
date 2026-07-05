@@ -1,5 +1,7 @@
 import { describe, it } from "node:test"
 import assert from "node:assert/strict"
+import * as fs from "node:fs/promises"
+import * as path from "node:path"
 import { Position, Range, TextLine, Context, wrapText } from "./wrapping.js"
 
 async function wrap(s: string, override?: Partial<Context>): Promise<string | string[]>
@@ -28,6 +30,26 @@ async function wrap(s: string, override?: Partial<Context>): Promise<string | st
 		return line
 	}
 
+	async function readFile(key: string): Promise<Uint8Array | undefined>
+	{
+		try
+		{
+			const filePath = path.join("out", key)
+			return await fs.readFile(filePath)
+		}
+		catch
+		{
+			return undefined
+		}
+	}
+
+	async function writeFile(key: string, data: Uint8Array): Promise<void>
+	{
+		const filePath = path.join("out", key)
+		await fs.mkdir("out", { recursive: true })
+		await fs.writeFile(filePath, data)
+	}
+
 	const languageId = "cpp"
 	const begin      = new Position(0, 0)
 	const end        = new Position(newLines.length - 2, newLines.at(-1))
@@ -42,6 +64,10 @@ async function wrap(s: string, override?: Partial<Context>): Promise<string | st
 		getText    : () => s,
 		getLine    : getLine,
 		onError    : console.log,
+		storage    : {
+			read  : readFile,
+			write : writeFile,
+		},
 	}
 
 	const wrapped = await wrapText(ctx)
@@ -393,8 +419,6 @@ describe("block comments", () =>
 		it("with multiline",  () => test("/*\n * asd\n *\n * asd\n */",   "/*\n * asd\n *\n * asd\n */"))
 		it("with narrow",     () => test("/* asd asd\n *\n * asd asd */", "/*\n * asd\n * asd\n *\n * asd\n * asd\n */", { lineWidth: 0 }))
 	})
-
-	// TODO: Should we allow bullets to be single line or not?
 
 	// Test preserved bullets
 	describe("bullet", () =>

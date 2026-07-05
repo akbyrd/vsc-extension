@@ -1,49 +1,45 @@
 import * as ts from "web-tree-sitter"
 
-class CachedResponse extends Response
-{
-	override async arrayBuffer(): Promise<ArrayBuffer>
-	{
-		const map = cache.db.fetch.arrayBuffer
-		var result = map.get(this)
-		if (result === undefined)
-		{
-			result = await super.arrayBuffer()
-			map.set(this, result)
-		}
-		return result
-	}
-
-	override get   body():     ReadableStream<Uint8Array> | null { throw Error("NYI") }
-	override async blob():     Promise<Blob>                     { throw Error("NYI") }
-	override async formData(): Promise<FormData>                 { throw Error("NYI") }
-	override async json():     Promise<any>                      { throw Error("NYI") }
-	override async text():     Promise<string>                   { throw Error("NYI") }
-}
-
 class Cache
 {
 	db = {
 		prefixes: new Set<PrefixSet>(),
-		fetch: {
-			response:    new Map<string, CachedResponse>(),
-			body:        new Map<CachedResponse, ReadableStream<Uint8Array> | null>(),
-			arrayBuffer: new Map<CachedResponse, ArrayBuffer>(),
-		}
+		fetch:    new Map<string, Uint8Array>(),
 	}
 
-	async fetch(url: string): Promise<Response>
+	async fetch(url: string, storage: Storage): Promise<Uint8Array>
 	{
-		const map = this.db.fetch.response
-		var result = map.get(url)
-		if (result === undefined)
+
+		// Check the memory cache first
+		const memCached = this.db.fetch.get(url)
+		if (memCached) return memCached
+
+		// Check the disk cache second
+		const url_ = new URL(url)
+		const key = url_.pathname.slice(url_.pathname.lastIndexOf("/") + 1)
+		const diskCached = await storage.read(key)
+		if (diskCached)
 		{
-			const response = await fetch(url)
-			result = Object.setPrototypeOf(response, CachedResponse.prototype) as CachedResponse
-			map.set(url, result)
+			this.db.fetch.set(url, diskCached)
+			return diskCached
 		}
-		return result
+
+		// TODO: Should this have a try/catch?
+
+		// Download if not cached
+		const response = await fetch(url)
+		const bytes    = await response.bytes()
+
+		// Cache the result in memory and on disk
+		await storage.write(key, bytes)
+		this.db.fetch.set(url, bytes)
+		return bytes
 	}
+}
+
+export type Storage = {
+	read  : (key: string) => Promise<Uint8Array | undefined>,
+	write : (key: string, data: Uint8Array) => Promise<void>,
 }
 
 export class Position
@@ -88,7 +84,7 @@ export type TextLine = {
 }
 
 export type Context = {
-	tabWidth    : number,
+	tabWidth   : number,
 	useSpaces  : boolean,
 	lineWidth  : number,
 	languageId : string,
@@ -96,6 +92,7 @@ export type Context = {
 	getText    : () => string,
 	getLine    : (i: number) => TextLine,
 	onError    : (s: string) => void,
+	storage    : Storage,
 }
 
 type Prefix = {
@@ -216,9 +213,8 @@ async function parseDocument(ctx: Context): Promise<Parse|undefined>
 		try
 		{
 			await ts.Parser.init()
-			const response : Response    = await cache.fetch(languageData.grammar)
-			const wasm     : ArrayBuffer = await response.arrayBuffer()
-			const language : ts.Language = await ts.Language.load(new Uint8Array(wasm))
+			const wasm     : Uint8Array  = await cache.fetch(languageData.grammar, ctx.storage)
+			const language : ts.Language = await ts.Language.load(wasm)
 			const parser   : ts.Parser   = new ts.Parser().setLanguage(language)
 			const text     : string      = ctx.getText()
 			const tree     : ts.Tree     = parser.parse(text)!
@@ -829,6 +825,7 @@ export async function wrapText(ctx: Context): Promise<string[]>
 const cache = new Cache()
 
 // TODO: lua, powershell, toml, yaml, xml, markdown
+// NOTE: File names (last path segment) are expected to be unique. Used for the local file cache.
 const languages: Record<string, LanguageData> = {
 	c: {
 		grammar: "https://github.com/tree-sitter/tree-sitter-c/releases/latest/download/tree-sitter-c.wasm",
@@ -886,6 +883,11 @@ const languages: Record<string, LanguageData> = {
 		blockComment: makePrefixSet("/*", " *", " */"),
 	},
 }
+
+// TODO: Check for newer tree sitter module version
+// TODO: Handle multiple fetches at the same time
+// TODO: Multi-thread tests (and synchronize tests around disk access)
+// TODO: Add a test to ensure file names are unique for grammars
 
 // TODO: Try to split "prefix custom" out of prefix
 // TODO: Change tokenEnd to tokenCount

@@ -27,7 +27,7 @@ export function activate(context: vscode.ExtensionContext)
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.fold.functions",                       t => fold_definitions(t, false, true)),
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.fold.definitions",                     t => fold_definitions(t, true, true)),
 		vscode.commands.registerTextEditorCommand("akbyrd.editor.fold.definitions.exceptSelected",      t => fold_definitions(t, true, false)),
-		vscode.commands.registerTextEditorCommand("akbyrd.editor.wrap.lines",                           wrap_lines),
+		vscode.commands.registerTextEditorCommand("akbyrd.editor.wrap.lines",                           (t, e) => wrap_lines(t, e, context.globalStorageUri)),
 	)
 
 	vscode.workspace.onDidCloseTextDocument(removeDocumentSymbols)
@@ -274,7 +274,7 @@ async function fold_definitions(textEditor: vscode.TextEditor, foldTypes: boolea
 	await vscode.commands.executeCommand("editor.fold", { levels: 1, selectionLines: toFold })
 }
 
-function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit)
+async function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit, storageUri: vscode.Uri)
 {
 	// NOTE: Edits may not overlap. For example, you cannot remove a newline character and place a
 	// new one at the same location. This means we can't use a naive approach that unwraps the
@@ -288,6 +288,26 @@ function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit)
 		symbolNav.statusBarMessage = vscode.window.setStatusBarMessage(`Failed to parse: ${s}`, 3000)
 	}
 
+	async function readFile(key: string): Promise<Uint8Array|undefined>
+	{
+		try
+		{
+			const path = vscode.Uri.joinPath(storageUri, key)
+			return await vscode.workspace.fs.readFile(path)
+		}
+		catch
+		{
+			return undefined
+		}
+	}
+
+	async function writeFile(key: string, data: Uint8Array)
+	{
+		const path = vscode.Uri.joinPath(storageUri, key)
+		await vscode.workspace.fs.createDirectory(storageUri)
+		await vscode.workspace.fs.writeFile(path, data)
+	}
+
 	const ctx : Context = {
 		tabWidth   : textEditor.options.tabSize as number,
 		useSpaces  : textEditor.options.insertSpaces as boolean,
@@ -297,8 +317,13 @@ function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditorEdit)
 		getText    : textEditor.document.getText,
 		getLine    : textEditor.document.lineAt,
 		onError    : onError,
+		storage    : {
+			read: readFile,
+			write: writeFile,
+		}
 	}
-	wrapText(ctx)
+
+	await wrapText(ctx)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
