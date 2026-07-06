@@ -23,6 +23,7 @@ export default tseslint.config(
 			"@stylistic/semi": ["warn", "never"],
 			"curly": "off",
 			"eqeqeq": "warn",
+			"no-fallthrough": "warn",
 			"no-throw-literal": "warn",
 			"no-unexpected-multiline": "warn",
 			"semi": "off"

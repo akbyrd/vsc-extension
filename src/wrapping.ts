@@ -5,7 +5,7 @@ class Cache
 	db = {
 		prefixes: new Set<PrefixSet>(),
 		fetch:    new Map<string, Uint8Array>(),
-		parser:   new Map<string, ts.Parser>(),
+		parser:   new Map<string, Parser>(),
 	}
 
 	async fetch(url: string, storage: Storage): Promise<Uint8Array>
@@ -36,7 +36,7 @@ class Cache
 		return bytes
 	}
 
-	async parser(url: string, storage: Storage): Promise<ts.Parser>
+	async parser(url: string, storage: Storage): Promise<Parser>
 	{
 		// Check the memory cache first
 		const memCached = this.db.parser.get(url)
@@ -46,7 +46,9 @@ class Cache
 		await ts.Parser.init()
 		const wasm     = await cache.fetch(url, storage)
 		const language = await ts.Language.load(wasm)
-		const parser   = new ts.Parser().setLanguage(language)
+		const tsParser = new ts.Parser().setLanguage(language)
+		const query    = new ts.Query(tsParser.language!, "(comment) @c")
+		const parser   = { ts: tsParser, query }
 
 		// Cache the result in memory
 		this.db.parser.set(url, parser)
@@ -134,8 +136,14 @@ type LanguageData = {
 	blockComment : PrefixSet,
 }
 
+type Parser = {
+	ts:    ts.Parser,
+	query: ts.Query,
+}
+
 type Parse = {
 	parser: ts.Parser,
+	query:  ts.Query,
 	tree:   ts.Tree,
 }
 
@@ -231,10 +239,10 @@ async function parseDocument(ctx: Context): Promise<Parse|undefined>
 		{
 			const parser = await cache.parser(languageData.grammar, ctx.storage)
 			const text   = ctx.getText()
-			const tree   = parser.parse(text)!
+			const tree   = parser.ts.parse(text)!
 			console.assert(tree)
 
-			return { parser, tree }
+			return { parser: parser.ts, query: parser.query, tree }
 		}
 		catch (e)
 		{
@@ -281,9 +289,8 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 			const start : Position = new Position(selection.start.line, Math.max(selection.start.character - 1, 0))
 			const end   : Position = new Position(selection.end.line,   selection.end.character + 1)
 
-			const query    : ts.Query          = new ts.Query(parse.parser.language!, "(comment) @c")
 			const options  : ts.QueryOptions   = { startPosition: toPoint(start), endPosition: toPoint(end) }
-			const captures : ts.QueryCapture[] = query.captures(parse.tree.rootNode, options)
+			const captures : ts.QueryCapture[] = parse.query.captures(parse.tree.rootNode, options)
 
 			for (const capture of captures)
 			{
