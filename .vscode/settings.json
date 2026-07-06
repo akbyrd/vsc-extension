@@ -9,15 +9,12 @@
 	// Use the installed version, instead of the one bundled with vscode
 	"js/ts.tsdk.path": "node_modules\\typescript\\lib",
 
-	// Lie about being a tty so the extension doesn't attach a debugger (this slows tests down massively)
-	// ```
-	// import t from "node:tty"
-	// t.isatty = () => true
-	// ```
+	// Disable inspector.open so the extension doesn't auto-attach (this slows tests down massively)
+	// Not properly escaped, but it works and is more readable.
 	"nodejs-testing.extensions": [
 		{
 			"extensions": ["js"],
-			"parameters": ["--import", "data:text/javascript,import%20t%20from%22node:tty%22;t.isatty=()=%3E1"]
+			"parameters": ["--import", "data:text/javascript,import i from 'node:inspector'; i.open = () => {}"]
 		}
-	]
+	],
 }
