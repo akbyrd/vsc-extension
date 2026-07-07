@@ -221,8 +221,8 @@
     "compile": "tsc",
     "watch": "tsc --watch",
     "lint": "eslint src",
-    "pretest": "tsc --build --clean",
-    "test": "tsc && node --test --no-experimental-strip-types",
+    "clean": "tsc --build --clean",
+    "test": "node --test --no-experimental-strip-types",
     "test:debug": "npm test -- --inspect --inspect-publish-uid=http"
   },
   "devDependencies": {
