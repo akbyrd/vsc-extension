@@ -174,6 +174,7 @@ describe("line comments", () =>
 		it("1",               () => test("// asd\n// asd",    "// asd asd"))
 		it("2",               () => test("// asd\n// asd",    "// asd\n// asd",       { lineWidth: 6 }))
 		it("3",               () => test("// asd\n\n// asd",  [ "// asd", "// asd" ]))
+		it("4",               () => test("//\n// asd",        "// asd"))
 		it("with indent",     () => test("\t// asd\n// asd",  "\t// asd\n\t// asd",   { lineWidth: 6 }))
 		it("with head-space", () => test("//asd\n// asd",     "// asd\n// asd",       { lineWidth: 6 }))
 		it("with tail-space", () => test("// asd \n// asd ",  "// asd\n// asd",       { lineWidth: 6 }))
@@ -257,7 +258,8 @@ describe("line comments", () =>
 		it("with trailing",     () => test("0; // @ref asd",               "// @ref asd"))
 		it("with multiline 1",  () => test("// @see asd\n// @see asd",     "// @see asd\n// @see asd"))
 		it("with multiline 2",  () => test("// @ref asd\n// @ref asd",     "// @ref asd @ref asd"))
-		it("with narrow",       () => test("// @param asd asd",            "// @param asd\n//        asd", { lineWidth: 0 }))
+		it("with narrow 1",     () => test("// @param asd asd",            "// @param asd\n//        asd", { lineWidth: 13 }))
+		it("with narrow 2",     () => test("// @param asd asd",            "// @param asd\n//        asd", { lineWidth: 12 }))
 		it("with newline",      () => test("// @ref asd\n//\n// @ref asd", "// @ref asd\n//\n// @ref asd"))
 		it("with bullet",       () => test("// * @see asd",                "// * @see asd"))
 	})
@@ -344,6 +346,7 @@ describe("block comments", () =>
 	describe("leading", () =>
 	{
 		it("1",               () => test("/* asd */ int x;",   "/* asd */"))
+		it("2",               () => test("/* asd *//* asd */", [ "/* asd */", "/* asd */" ]))
 		it("with indent",     () => test("\t/* asd */ int x;", "\t/* asd */"))
 		it("with head-space", () => test("/*asd */ int x;",    "/* asd */"))
 		it("with tail-space", () => test("/* asd*/ int x;",    "/* asd */"))
@@ -379,6 +382,7 @@ describe("block comments", () =>
 		it("1",               () => test("/*\n * asd\n * asd\n */",         "/* asd asd */"))
 		it("2",               () => test("/*\n * asd\n * asd\n */",         "/*\n * asd\n * asd\n */",         { lineWidth: 6 }))
 		it("3",               () => test("/*\n * asd\n\n*/",                "/* asd */"))
+		it("4",               () => test("/*\nasd */",                      "/* asd */"))
 		it("with indent",     () => test("\t/*\n\t * asd\n\t * asd\n\t */", "\t/*\n\t * asd\n\t * asd\n\t */", { lineWidth: 6 }))
 		it("with head-space", () => test("/*\n*asd\n*asd\n*/",              "/*\n * asd\n * asd\n */",         { lineWidth: 6 }))
 		it("with tail-space", () => test("/*\n * asd \n * asd*/",           "/*\n * asd\n * asd\n */",         { lineWidth: 6 }))
@@ -482,7 +486,8 @@ describe("block comments", () =>
 		it("with embedded",     () => test("foo(/* @ref asd */ x)",             "/* @ref asd */"))
 		it("with multiline 1",  () => test("/* @see asd\n * @see asd */",       "/*\n * @see asd\n * @see asd\n */"))
 		it("with multiline 2",  () => test("/*\n * @ref asd\n * @ref asd\n */", "/* @ref asd @ref asd */"))
-		it("with narrow",       () => test("/* @param asd asd */",              "/*\n * @param asd\n *        asd\n */", { lineWidth: 0 }))
+		it("with narrow 1",     () => test("/* @param asd asd */",              "/*\n * @param asd\n *        asd\n */", { lineWidth: 13 }))
+		it("with narrow 2",     () => test("/* @param asd asd */",              "/*\n * @param asd\n *        asd\n */", { lineWidth: 12 }))
 		it("with newline",      () => test("/* @ref asd\n *\n * @ref asd */",   "/*\n * @ref asd\n *\n * @ref asd\n */"))
 		it("with bullet",       () => test("/* * @see asd */",                  "/* * @see asd */"))
 	})
@@ -500,7 +505,8 @@ describe("block comments", () =>
 		it("with prefix 1",   () => test("/** */",         ""))
 		it("with prefix 2",   () => test("/***/",          ""))
 		it("with suffix",     () => test("/* **/",         ""))
-		it("with leading",    () => test("/* */ int x;",   ""))
+		it("with leading 1",  () => test("/**//**/",       [ "", "" ]))
+		it("with leading 2",  () => test("/* */ int x;",   ""))
 		it("with trailing",   () => test("0; /* */",       ""))
 		it("with embedded",   () => test("foo(/* */ x)",   ""))
 		it("with multiline",  () => test("/*\n */",        ""))
@@ -512,10 +518,9 @@ describe("block comments", () =>
 	})
 })
 
+// TODO: Tests for normalizing whitespace between tokens
 // TODO: Enable more linting
 // TODO: Delay error lens visuals
 // TODO: Keybindings for tests
-// test current line, file, project, solution
-// test and debug current line, file, project, solution
-// rerun failed tests
+// { test, test debug } x { failed, line, file, project, solution }
 // TODO: Custom test reporter

@@ -353,7 +353,6 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 					const end        = toPosition(endNode.endPosition)
 					const prevEnd    = startNode.previousSibling?.endPosition
 					const isTrailing = prevEnd?.row === start.line
-					start.character  = isTrailing ? prevEnd.column : 0
 
 					blocks.push({
 						type:       BlockType.lineComment,
@@ -409,11 +408,11 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 function tokenizeBlock(ctx: Context, block: Block)
 {
 	const indentRe  = /\s*/y
-	const prefixRe  = /[^\w\s@\\]+/g
+	const prefixRe  = /[^\w\s@\\]+/y
 	const doxygenRe = /(?!(?:endlink|anchor|link|cite|ref|em|[abcenp])\b|f\$|\W)\S+/y
 	const bulletRe  = /[\*-]|\d+[\)\.]/y
-	const tokenRe   = /\S+/g
-	const suffixRe  = /[^\w\s]+/g
+	const tokenRe   = /\S+/g      // NOTE: Can't use y because we want to skip whitespace
+	const suffixRe  = /[^\w\s]+/g // NOTE: Can't use y because we want to skip the token
 	const doxygenLeaders = [ "@".charCodeAt(0), "\\".charCodeAt(0) ]
 
 	switch (block.type)
@@ -453,26 +452,32 @@ function tokenizeBlock(ctx: Context, block: Block)
 				indentRe.lastIndex = iChar
 				match = indentRe.exec(line.text)
 				{
-					iChar = Math.max(indentRe.lastIndex, rLine.start.character)
+					iChar = indentRe.lastIndex
 					lineInfo.indent = {
 						begin: match!.index,
 						end:   indentRe.lastIndex,
 					}
 				}
+				iChar = Math.max(iChar, rLine.start.character)
 
 				// TODO: This is wrong because it looks for non-word characters
 				// Breaks for lines starting with: digit, period, any symbol not meant to be a prefix
 				// We might want to get the first token, then analyze it
 				// Only look for expected prefix + custom?
 
+				// TODO: When this matches the suffix and we try to split it apart, thee suffix ends up
+				// eating the whole thing and leaving the prefix empty
+				// 1. No point in trying to peel the suffix off the prefix in this case
+				// 2. Can we be more precise about the characters we match? Use the language data?
+
 				// Prefix (split when attached to first token)
 				prefixRe.lastIndex = iChar
-				if ((match = prefixRe.exec(line.text)) && match.index < rLine.end.character)
+				if ((match = prefixRe.exec(line.text)))
 				{
-					iChar = prefixRe.lastIndex
+					iChar = Math.min(prefixRe.lastIndex, rLine.end.character)
 					lineInfo.prefix = {
 						begin: match.index,
-						end:   prefixRe.lastIndex,
+						end:   iChar,
 					}
 				}
 
@@ -481,8 +486,9 @@ function tokenizeBlock(ctx: Context, block: Block)
 
 				// Align
 				indentRe.lastIndex = iChar
-				if ((match = indentRe.exec(line.text)) && match.index < rLine.end.character)
+				if ((match = indentRe.exec(line.text)))
 				{
+					// NOTE: This will always match
 					iChar = indentRe.lastIndex
 					lineInfo.align = {
 						begin: match.index,
@@ -495,7 +501,7 @@ function tokenizeBlock(ctx: Context, block: Block)
 				if (doxygenLeaders.includes(nextChar))
 				{
 					doxygenRe.lastIndex = iChar + 1
-					if ((match = doxygenRe.exec(line.text)) && match.index < rLine.end.character)
+					if ((match = doxygenRe.exec(line.text)))
 					{
 						iChar = doxygenRe.lastIndex
 						lineInfo.isDoxygen = true
@@ -511,7 +517,7 @@ function tokenizeBlock(ctx: Context, block: Block)
 				if (lineInfo.type !== LineType.bullet)
 				{
 					bulletRe.lastIndex = iChar
-					if ((match = bulletRe.exec(line.text)) && match.index < rLine.end.character)
+					if ((match = bulletRe.exec(line.text)))
 					{
 						iChar = bulletRe.lastIndex
 						lineInfo.type = LineType.bullet
@@ -529,7 +535,7 @@ function tokenizeBlock(ctx: Context, block: Block)
 					lineInfo.tokenEnd++
 					block.tokens.push({
 						begin: match.index,
-						end:   tokenRe.lastIndex,
+						end:   Math.min(tokenRe.lastIndex, rLine.end.character),
 					})
 				}
 			}
@@ -545,9 +551,11 @@ function tokenizeBlock(ctx: Context, block: Block)
 				// NOTE: This should always match
 				suffixRe.lastIndex = token.begin
 				const match = suffixRe.exec(lineInfo.text)
-				if (match)
+				if (match && match.index < block.range.end.character)
 				{
-					const suffixLen = match[0].length
+					const suffixEnd = Math.min(suffixRe.lastIndex, block.range.end.character)
+					const suffixLen = suffixEnd - match.index
+
 					token.end -= suffixLen
 					if (useToken && token.end === token.begin)
 					{
@@ -763,7 +771,8 @@ function wrapBlock(ctx: Context, block: Block): string
 		{
 			const token    = block.tokens[i]
 			const tokenLen = token.end - token.begin
-			const doesFit  = leader.length + content.length + tokenLen + 1 <= lineWidth
+			const totalLen = leader.length + bullet.length + content.length + 1 + tokenLen
+			const doesFit  = totalLen <= lineWidth
 			const overflow = content.length && !doesFit
 
 			if (overflow)
@@ -793,8 +802,8 @@ function wrapBlock(ctx: Context, block: Block): string
 				const prefix     = p0.chars
 				const suffix     = p2.chars
 				const contentLen = lines[0].length - leader.length
-				const extraLen   = indent.length + prefix.length + suffix.length + 1
-				const doesFit    = contentLen + extraLen <= lineWidth
+				const totalLen   = indent.length + prefix.length + contentLen + 1 + suffix.length
+				const doesFit    = totalLen <= lineWidth
 
 				if (doesFit)
 				{
@@ -905,6 +914,7 @@ const languages: Record<string, LanguageData> = {
 	},
 }
 
+// TODO: Empty comments should remove the line
 // TODO: Check for newer tree sitter module version
 // TODO: Handle multiple fetches at the same time
 // TODO: Multi-thread tests (and synchronize tests around disk access)
@@ -912,9 +922,9 @@ const languages: Record<string, LanguageData> = {
 // TODO: Try to split "prefix custom" out of prefix
 // TODO: Split indentation and custom whitespace
 // TODO: Change customPrefix slice to a lazy resolve
-// TODO: Apply edits in vscode
 // TODO: Better exporting from this file
 // TODO: Have AI implement from scratch and compare
+// TODO: Reimplement in zed and compare
 // TODO: Handle overlapping queries (due to character expand)
 // TODO: Improve plaintext support
 // TODO: Figure out how to handle code in markdown / other embedded languages
