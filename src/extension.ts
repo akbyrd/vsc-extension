@@ -280,6 +280,9 @@ async function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditor
 	// new one at the same location. This means we can't use a naive approach that unwraps the
 	// block and then re-wraps it.
 
+	// NOTE: Edits must be synchronous. Since we await a file download/load, parser initialization,
+	// and parser load we can't use the synchronous edit that is passed in. Instead, we
+
 	// TODO: Share statusBarMessage
 	function onError(s: string)
 	{
@@ -308,6 +311,7 @@ async function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditor
 		await vscode.workspace.fs.writeFile(path, data)
 	}
 
+	// TODO: Get the proper line width (shortest when multiple? toggle? setting?)
 	const ctx : Context = {
 		tabWidth   : textEditor.options.tabSize as number,
 		useSpaces  : textEditor.options.insertSpaces as boolean,
@@ -323,7 +327,21 @@ async function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditor
 		}
 	}
 
-	await wrapText(ctx)
+	const results = await wrapText(ctx)
+
+	function apply(e: vscode.TextEditorEdit)
+	{
+		for (const r of results)
+		{
+			const range = new vscode.Range(
+				r.range.start.line, r.range.start.character,
+				r.range.end.line,   r.range.end.character,
+			)
+			e.replace(range, r.text)
+		}
+	}
+
+	await textEditor.edit(apply)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

@@ -474,6 +474,9 @@ function tokenizeBlock(ctx: Context, block: Block)
 				prefixRe.lastIndex = iChar
 				if ((match = prefixRe.exec(line.text)))
 				{
+					// NOTE: This wil match the suffix and trailing comments in pathological cases like
+					// /**//**/
+
 					iChar = Math.min(prefixRe.lastIndex, rLine.end.character)
 					lineInfo.prefix = {
 						begin: match.index,
@@ -833,7 +836,12 @@ function wrapBlock(ctx: Context, block: Block): string
 	return result
 }
 
-export async function wrapText(ctx: Context): Promise<string[]>
+export type WrapResult = {
+	range : Range,
+	text  : string,
+}
+
+export async function wrapText(ctx: Context): Promise<WrapResult[]>
 {
 	console.assert(ctx.tabWidth > 0)
 	console.assert(ctx.lineWidth >= 0)
@@ -841,13 +849,13 @@ export async function wrapText(ctx: Context): Promise<string[]>
 	const parse  = await parseDocument(ctx)
 	const blocks = gatherBlocks(ctx, parse)
 
-	const results = []
+	const results: WrapResult[] = []
 	for (const block of blocks)
 	{
 		const _1      = tokenizeBlock(ctx, block)
 		const _2      = analyzeBlock(ctx, block)
 		const wrapped = wrapBlock(ctx, block)
-		results.push(wrapped)
+		results.push({ range: block.range, text: wrapped })
 	}
 	return results
 }

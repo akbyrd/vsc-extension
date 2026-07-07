@@ -2,7 +2,7 @@ import { describe, it } from "node:test"
 import assert from "node:assert/strict"
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
-import { Position, Range, TextLine, Context, wrapText } from "./wrapping.js"
+import { Position, Range, TextLine, Context, WrapResult, wrapText } from "./wrapping.js"
 
 async function wrap(s: string, override?: Partial<Context>): Promise<string | string[]>
 {
@@ -71,7 +71,7 @@ async function wrap(s: string, override?: Partial<Context>): Promise<string | st
 	}
 
 	const wrapped = await wrapText(ctx)
-	return wrapped.length === 1 ? wrapped[0] : wrapped
+	return wrapped.length === 1 ? wrapped[0].text : wrapped.map(w => w.text)
 }
 
 async function test(original: string, expected: string | string[], override?: Partial<Context>)
