@@ -99,6 +99,13 @@ async function test(original: string, expected: string | string[], override?: Pa
 
 describe("line comments", () =>
 {
+	// Test whitespace between tokens
+	describe("whitespace", () =>
+	{
+		it("1", () => test("// asd  asd", "// asd asd"))
+		it("2", () => test("// asd\tasd", "// asd asd"))
+	})
+
 	// Test indentation
 	describe("indent", () =>
 	{
@@ -287,6 +294,13 @@ describe("line comments", () =>
 
 describe("block comments", () =>
 {
+	// Test whitespace between tokens
+	describe("whitespace", () =>
+	{
+		it("1", () => test("/* asd  asd */", "/* asd asd */"))
+		it("2", () => test("/* asd\tasd */", "/* asd asd */"))
+	})
+
 	// Test indentation
 	describe("indent", () =>
 	{
@@ -518,7 +532,6 @@ describe("block comments", () =>
 	})
 })
 
-// TODO: Tests for normalizing whitespace between tokens
 // TODO: Enable more linting
 // TODO: Delay error lens visuals
 // TODO: Keybindings for tests
