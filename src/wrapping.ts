@@ -567,10 +567,10 @@ function analyzeBlock(ctx: Context, block: Block)
 	// Detect Doxygen commands
 	{
 		// Inline  - link/endlink, anchor, emoji, cite, ref, em, a, b, c, e, n, p, f$, f(, f)
-		//           any non-word chars followed by word chars (e.g. @$, @---, and @~lang)
+		//           any non-word chars followed by optional word chars (e.g. @$, @---, and @~lang)
 		// Section - everything else
 
-		const doxygenRe = /(?:endlink|anchor|emoji|link|cite|ref|em|[abcenp])\b|f[\$\(\)]|\W+\w+/y
+		const doxygenRe = /(?:endlink|anchor|emoji|link|cite|ref|em|[abcenp])\b|f[\$\(\)]|[^\w\s]\w*/y
 		const doxygenLeaders = [ "@".charCodeAt(0), "\\".charCodeAt(0) ]
 
 		for (const lineInfo of block.lineInfos)
@@ -583,8 +583,7 @@ function analyzeBlock(ctx: Context, block: Block)
 				if (doxygenLeaders.includes(firstChar))
 				{
 					doxygenRe.lastIndex = token.begin + 1
-					if (!doxygenRe.exec(lineInfo.text))
-						token.doxygen = true
+					token.doxygen = !doxygenRe.exec(lineInfo.text)
 				}
 			}
 		}
