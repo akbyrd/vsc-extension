@@ -114,6 +114,11 @@ export type Context = {
 	storage    : Storage,
 }
 
+export type WrapResult = {
+	range : Range,
+	text  : string,
+}
+
 type Prefix = {
 	chars : string,
 	align : number,
@@ -148,8 +153,9 @@ type Parse = {
 }
 
 type Token = {
-	begin: number,
-	end:   number,
+	begin:    number,
+	end:      number,
+	doxygen?: boolean,
 }
 
 enum BlockType
@@ -182,7 +188,6 @@ type LineInfo = {
 	indentWidth : number, // TODO: Move to block
 	alignWidth  : number,
 	runLength   : number,
-	isDoxygen   : boolean,
 }
 
 type Block = {
@@ -409,11 +414,9 @@ function tokenizeBlock(ctx: Context, block: Block)
 {
 	const indentRe  = /\s*/y
 	const prefixRe  = /[^\w\s@\\]+/y
-	const doxygenRe = /(?!(?:endlink|anchor|emoji|link|cite|ref|em|[abcenp])\b|f\$|\W)\S+/y
 	const bulletRe  = /[\*-]|\d+[\)\.]/y
 	const tokenRe   = /\S+/g      // NOTE: Can't use y because we want to skip whitespace
 	const suffixRe  = /[^\w\s]+/g // NOTE: Can't use y because we want to skip the token
-	const doxygenLeaders = [ "@".charCodeAt(0), "\\".charCodeAt(0) ]
 
 	switch (block.type)
 	{
@@ -441,7 +444,6 @@ function tokenizeBlock(ctx: Context, block: Block)
 					indentWidth: 0,
 					alignWidth:  0,
 					runLength:   0,
-					isDoxygen:   false,
 				})
 				const lineInfo = block.lineInfos.at(-1)!
 
@@ -499,35 +501,15 @@ function tokenizeBlock(ctx: Context, block: Block)
 					}
 				}
 
-				// Doxygen command (split when attached to first token)
-				const nextChar = line.text.charCodeAt(iChar)
-				if (doxygenLeaders.includes(nextChar))
-				{
-					doxygenRe.lastIndex = iChar + 1
-					if ((match = doxygenRe.exec(line.text)))
-					{
-						iChar = doxygenRe.lastIndex
-						lineInfo.isDoxygen = true
-						lineInfo.type = LineType.bullet
-						lineInfo.bullet = {
-							begin: match.index - 1,
-							end:   doxygenRe.lastIndex,
-						}
-					}
-				}
-
 				// Bullet (split when attached to first token)
-				if (lineInfo.type !== LineType.bullet)
+				bulletRe.lastIndex = iChar
+				if ((match = bulletRe.exec(line.text)))
 				{
-					bulletRe.lastIndex = iChar
-					if ((match = bulletRe.exec(line.text)))
-					{
-						iChar = bulletRe.lastIndex
-						lineInfo.type = LineType.bullet
-						lineInfo.bullet = {
-							begin: match.index,
-							end:   bulletRe.lastIndex,
-						}
+					iChar = bulletRe.lastIndex
+					lineInfo.type = LineType.bullet
+					lineInfo.bullet = {
+						begin: match.index,
+						end:   bulletRe.lastIndex,
 					}
 				}
 
@@ -582,6 +564,32 @@ function tokenizeBlock(ctx: Context, block: Block)
 
 function analyzeBlock(ctx: Context, block: Block)
 {
+	// Detect Doxygen commands
+	{
+		// Inline  - link/endlink, anchor, emoji, cite, ref, em, a, b, c, e, n, p, f$, f(, f)
+		//           any non-word chars followed by word chars (e.g. @$, @---, and @~lang)
+		// Section - everything else
+
+		const doxygenRe = /(?:endlink|anchor|emoji|link|cite|ref|em|[abcenp])\b|f[\$\(\)]|\W+\w+/y
+		const doxygenLeaders = [ "@".charCodeAt(0), "\\".charCodeAt(0) ]
+
+		for (const lineInfo of block.lineInfos)
+		{
+			for (var i = lineInfo.tokenBegin; i < lineInfo.tokenEnd; i++)
+			{
+				const token = block.tokens[i]
+
+				const firstChar = lineInfo.text.charCodeAt(token.begin)
+				if (doxygenLeaders.includes(firstChar))
+				{
+					doxygenRe.lastIndex = token.begin + 1
+					if (!doxygenRe.exec(lineInfo.text))
+						token.doxygen = true
+				}
+			}
+		}
+	}
+
 	// Detect indentation
 	{
 		if (!block.isTrailing)
@@ -595,13 +603,9 @@ function analyzeBlock(ctx: Context, block: Block)
 	// Detect blank lines
 	{
 		// NOTE: If a line is both a bullet and blank, blank wins
-		// NOTE: Doxygen lines are never considered blank
 
 		for (const lineInfo of block.lineInfos)
 		{
-			if (lineInfo.isDoxygen)
-				continue
-
 			const isBlank = lineInfo.tokenBegin === lineInfo.tokenEnd
 			lineInfo.type = isBlank ? LineType.blank : lineInfo.type
 		}
@@ -747,13 +751,15 @@ function wrapBlock(ctx: Context, block: Block): string
 	var flushCount = 0
 	var bullet     = ""
 	var content    = ""
+	var isDoxygen  = false
 
 	function flush()
 	{
 		if (flushCount++ !== 0)
 		{
 			lines.push(`${leader}${bullet}${content}`)
-			content = ""
+			content   = ""
+			isDoxygen = false
 		}
 	}
 
@@ -773,6 +779,18 @@ function wrapBlock(ctx: Context, block: Block): string
 		for (var i = lineInfo.tokenBegin; i < lineInfo.tokenEnd; i++)
 		{
 			const token    = block.tokens[i]
+			const tokenStr = lineInfo.text.slice(token.begin, token.end)
+
+			if (token.doxygen)
+			{
+				if (content.length || isDoxygen)
+					flush()
+
+				isDoxygen = true
+				bullet    = ` ${tokenStr}`
+				continue
+			}
+
 			const tokenLen = token.end - token.begin
 			const totalLen = leader.length + bullet.length + content.length + 1 + tokenLen
 			const doesFit  = totalLen <= lineWidth
@@ -784,7 +802,6 @@ function wrapBlock(ctx: Context, block: Block): string
 				bullet = " ".repeat(bullet.length)
 			}
 
-			const tokenStr = lineInfo.text.slice(token.begin, token.end)
 			content += ` ${tokenStr}`
 		}
 	}
@@ -834,11 +851,6 @@ function wrapBlock(ctx: Context, block: Block): string
 
 	const result = lines.join('\n')
 	return result
-}
-
-export type WrapResult = {
-	range : Range,
-	text  : string,
 }
 
 export async function wrapText(ctx: Context): Promise<WrapResult[]>

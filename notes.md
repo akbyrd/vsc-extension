@@ -1,7 +1,7 @@
 To Do
 -----
 TODO: I don't think bullet + doxygen will be handled correctly
-TODO: If section commands aren't already on a new line I don't think they will get detected and moved to one.
+TODO: Don't count "describe" in the failed test count
 TODO: Enable more linting
 TODO: Delay error lens visuals
 TODO: Keybindings for tests { test, test debug } x { failed, line, file, project, solution }
