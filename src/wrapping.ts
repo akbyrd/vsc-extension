@@ -664,48 +664,50 @@ function analyzeBlock(ctx: Context, block: Block)
 	}
 
 	// Detect custom prefix/suffix
-	switch (block.type)
 	{
-		case BlockType.lineComment:
+		switch (block.type)
 		{
-			const lineInfo = block.lineInfos[0]
-			const token    = lineInfo.prefix
-			const prefix   = lineInfo.text.slice(token.begin, token.end)
-			block.prefixes[0].chars = prefix
-			block.prefixes[1].chars = prefix
-			break
-		}
-
-		case BlockType.blockComment:
-		{
-			// First line
+			case BlockType.lineComment:
 			{
 				const lineInfo = block.lineInfos[0]
 				const token    = lineInfo.prefix
 				const prefix   = lineInfo.text.slice(token.begin, token.end)
 				block.prefixes[0].chars = prefix
+				block.prefixes[1].chars = prefix
+				break
 			}
 
-			// Second line
-			if (block.lineInfos.length > 1)
+			case BlockType.blockComment:
 			{
-				const lineInfo = block.lineInfos[1]
-				const token    = lineInfo.prefix
-				if (token.end > token.begin)
+				// First line
 				{
-					const prefix = lineInfo.text.slice(token.begin, token.end)
-					block.prefixes[1].chars = prefix
+					const lineInfo = block.lineInfos[0]
+					const token    = lineInfo.prefix
+					const prefix   = lineInfo.text.slice(token.begin, token.end)
+					block.prefixes[0].chars = prefix
 				}
-			}
 
-			// Last line
-			{
-				const lineInfo = block.lineInfos.at(-1)!
-				const token    = lineInfo.suffix
-				const suffix   = lineInfo.text.slice(token.begin, token.end)
-				block.prefixes[2].chars = suffix
+				// Second line
+				if (block.lineInfos.length > 1)
+				{
+					const lineInfo = block.lineInfos[1]
+					const token    = lineInfo.prefix
+					if (token.end > token.begin)
+					{
+						const prefix = lineInfo.text.slice(token.begin, token.end)
+						block.prefixes[1].chars = prefix
+					}
+				}
+
+				// Last line
+				{
+					const lineInfo = block.lineInfos.at(-1)!
+					const token    = lineInfo.suffix
+					const suffix   = lineInfo.text.slice(token.begin, token.end)
+					block.prefixes[2].chars = suffix
+				}
+				break
 			}
-			break
 		}
 	}
 
