@@ -409,7 +409,7 @@ function tokenizeBlock(ctx: Context, block: Block)
 {
 	const indentRe  = /\s*/y
 	const prefixRe  = /[^\w\s@\\]+/y
-	const doxygenRe = /(?!(?:endlink|anchor|link|cite|ref|em|[abcenp])\b|f\$|\W)\S+/y
+	const doxygenRe = /(?!(?:endlink|anchor|emoji|link|cite|ref|em|[abcenp])\b|f\$|\W)\S+/y
 	const bulletRe  = /[\*-]|\d+[\)\.]/y
 	const tokenRe   = /\S+/g      // NOTE: Can't use y because we want to skip whitespace
 	const suffixRe  = /[^\w\s]+/g // NOTE: Can't use y because we want to skip the token

@@ -89,10 +89,6 @@ async function test(original: string, expected: string | string[], override?: Pa
 		throw e
 	}
 
-	// TODO: Try to put this in the reporter
-	// Put it in the reporter if it works with the vscode test view
-	// Otherwise put it in wrapping.test.ts
-
 	// NOTE: We need to do something async so test results are flushed and can stream
 	await new Promise(setImmediate)
 }
@@ -257,6 +253,10 @@ describe("line comments", () =>
 		it("6",                 () => test("// asd\n// @f$ asd",           "// asd @f$ asd"))
 		it("7",                 () => test("// asd\n// @$ asd",            "// asd @$ asd"))
 		it("8",                 () => test("// asd\n// @:: asd",           "// asd @:: asd"))
+		it("9",                 () => test("// asd @emoji asd",            "// asd @emoji asd"))
+		it("10",                () => test("// asd @section asd",          "// asd\n// @section asd"))
+		it("11",                () => test("// asd\n// @emoji asd",        "// asd @emoji asd"))
+		it("12",                () => test("// asd\n// @section asd",      "// asd\n// @section asd"))
 		it("with indent",       () => test("\t// @see asd",                "\t// @see asd"))
 		it("with head-space 1", () => test("//@ref asd",                   "// @ref asd"))
 		it("with head-space 2", () => test("//@ref\n// asd",               "// @ref asd"))
@@ -470,13 +470,7 @@ describe("block comments", () =>
 		it("with newline",    () => test("/*  * asd\n *\n *  * asd */",  "/*\n *  * asd\n *\n *  * asd\n */"))
 	})
 
-	// TODO: If section commands aren't already on a new line I don't think they will get detected
-	// and moved to one.
-
-	// TODO: I don't think bullet + doxygen will be handled correctly
-	// TODO: \emoji
-
-	// Inline  - link/endlink, anchor, cite, ref, em, a, b, c, e, n, p, f$
+	// Inline  - link/endlink, anchor, emoji, cite, ref, em, a, b, c, e, n, p, f$
 	// Section - everything else
 
 	// Test preserved doxygen
@@ -490,6 +484,10 @@ describe("block comments", () =>
 		it("6",                 () => test("/* asd\n * @f$ asd */",             "/* asd @f$ asd */"))
 		it("7",                 () => test("/* asd\n * @$ asd */",              "/* asd @$ asd */"))
 		it("8",                 () => test("/* asd\n * @:: asd */",             "/* asd @:: asd */"))
+		it("9",                 () => test("/* asd @emoji asd */",              "/* asd @emoji asd */"))
+		it("10",                () => test("/* asd @section asd */",            "/*\n * asd\n * @section asd\n */"))
+		it("11",                () => test("/* asd\n * @emoji asd */",          "/* asd @emoji asd */"))
+		it("12",                () => test("/* asd\n * @section asd */",        "/*\n * asd\n * @section asd\n */"))
 		it("with indent",       () => test("\t/* @see asd */",                  "\t/* @see asd */"))
 		it("with head-space 1", () => test("/*@ref asd */",                     "/* @ref asd */"))
 		it("with head-space 2", () => test("/*@ref\n* asd */",                  "/* @ref asd */"))
@@ -505,9 +503,6 @@ describe("block comments", () =>
 		it("with newline",      () => test("/* @ref asd\n *\n * @ref asd */",   "/*\n * @ref asd\n *\n * @ref asd\n */"))
 		it("with bullet",       () => test("/* * @see asd */",                  "/* * @see asd */"))
 	})
-
-	// TODO: Prefix and suffix are tokenized incorrectly for several of these, even though it doesn't
-	// end up mattering. Should we fix this?
 
 	// Test empty
 	describe("empty", () =>
@@ -531,9 +526,3 @@ describe("block comments", () =>
 		it("with doxygen",    () => test("/* @endcode */", "/* @endcode */"))
 	})
 })
-
-// TODO: Enable more linting
-// TODO: Delay error lens visuals
-// TODO: Keybindings for tests
-// { test, test debug } x { failed, line, file, project, solution }
-// TODO: Custom test reporter

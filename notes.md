@@ -1,3 +1,14 @@
+To Do
+-----
+TODO: I don't think bullet + doxygen will be handled correctly
+TODO: If section commands aren't already on a new line I don't think they will get detected and moved to one.
+TODO: Enable more linting
+TODO: Delay error lens visuals
+TODO: Keybindings for tests { test, test debug } x { failed, line, file, project, solution }
+TODO: Custom test reporter
+
+
+
 Tree Sitter
 -----------
 https://github.com/tree-sitter
@@ -23,6 +34,7 @@ for (const ext of vscode.extensions.all)
 	}
 }
 ```
+
 
 
 Testing
