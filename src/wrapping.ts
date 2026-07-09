@@ -415,8 +415,8 @@ function tokenizeBlock(ctx: Context, block: Block)
 	const indentRe  = /\s*/y
 	const prefixRe  = /[^\w\s@\\]+/y
 	const bulletRe  = /[\*-]|\d+[\)\.]/y
-	const tokenRe   = /\S+/g      // NOTE: Can't use y because we want to skip whitespace
-	const suffixRe  = /[^\w\s]+/g // NOTE: Can't use y because we want to skip the token
+	const tokenRe   = /\S+/g       // NOTE: Can't use y because we want to skip whitespace
+	const suffixRe  = /[^\w\s]+$/g // NOTE: Can't use y because we want to skip the token
 
 	switch (block.type)
 	{
@@ -532,14 +532,14 @@ function tokenizeBlock(ctx: Context, block: Block)
 				const lineInfo = block.lineInfos.at(-1)!
 				const useToken = lineInfo.tokenEnd > lineInfo.tokenBegin
 				const token    = useToken ? block.tokens.at(-1)! : lineInfo.prefix
+				const tokenStr = lineInfo.text.slice(token.begin, token.end)
 
 				// NOTE: This should always match
-				suffixRe.lastIndex = token.begin
-				const match = suffixRe.exec(lineInfo.text)
-				if (match && match.index < block.range.end.character)
+				suffixRe.lastIndex = 0
+				const match = suffixRe.exec(tokenStr)
+				if (match)
 				{
-					const suffixEnd = Math.min(suffixRe.lastIndex, block.range.end.character)
-					const suffixLen = suffixEnd - match.index
+					const suffixLen = match[0].length
 
 					token.end -= suffixLen
 					if (useToken && token.end === token.begin)
@@ -549,8 +549,8 @@ function tokenizeBlock(ctx: Context, block: Block)
 					}
 
 					lineInfo!.suffix = {
-						begin: match.index,
-						end:   match.index + suffixLen,
+						begin: token.end,
+						end:   token.end + suffixLen,
 					}
 				}
 			}
