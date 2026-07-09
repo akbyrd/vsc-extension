@@ -63,7 +63,6 @@ async function task_runWithArgs(taskWithArgs: TaskWithArgs | string)
 // TODO: Contribute task definitions?
 // TODO: Set a default for target or handle it being empty
 // TODO: Can we make headers compilable?
-// TODO: Unreal build tasks
 
 function task_getArgs(argName: string)
 {
@@ -283,12 +282,11 @@ async function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditor
 	// NOTE: Edits must be synchronous. Since we await a file download/load, parser initialization,
 	// and parser load we can't use the synchronous edit that is passed in. Instead, we
 
-	// TODO: Share statusBarMessage
 	function onError(s: string)
 	{
 		console.log(s)
 		symbolNav.statusBarMessage?.dispose()
-		symbolNav.statusBarMessage = vscode.window.setStatusBarMessage(`Failed to parse: ${s}`, 3000)
+		symbolNav.statusBarMessage = vscode.window.setStatusBarMessage(`Failed to wrap: ${s}`, 3000)
 	}
 
 	async function readFile(key: string): Promise<Uint8Array|undefined>
@@ -311,11 +309,19 @@ async function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditor
 		await vscode.workspace.fs.writeFile(path, data)
 	}
 
-	// TODO: Get the proper line width (shortest when multiple? toggle? setting?)
+	const config = vscode.workspace.getConfiguration('editor', textEditor.document.uri)
+
+	interface Ruler { column: number }
+	const rulers = config.get<(number | Ruler)[]>('rulers', [ 100 ])
+	const lineWidth = rulers
+		.map(r => typeof r === 'number' ? r : r.column)
+		.filter(r => r > 0)
+		.reduce((p, c) => Math.min(p, c), Number.POSITIVE_INFINITY)
+
 	const ctx : Context = {
 		tabWidth   : textEditor.options.tabSize as number,
 		useSpaces  : textEditor.options.insertSpaces as boolean,
-		lineWidth  : 120,
+		lineWidth  : lineWidth,
 		languageId : textEditor.document.languageId,
 		selections : textEditor.selections,
 		getText    : textEditor.document.getText,
