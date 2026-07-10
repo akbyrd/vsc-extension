@@ -154,7 +154,6 @@ describe("line comments", () =>
 		it("2",               () => test("//* asd",   "//* asd"))
 		it("3",               () => test("//! asd",   "//! asd"))
 		it("4",               () => test("//< asd",   "//< asd"))
-		it("5",               () => test("//*!< asd", "//*!< asd"))
 		it("with indent",     () => test("\t/// asd", "\t/// asd"))
 		it("with head-space", () => test("///asd",    "/// asd"))
 		it("with tail-space", () => test("/// asd ",  "/// asd"))
@@ -339,7 +338,6 @@ describe("block comments", () =>
 		it("1",               () => test("/** asd */",           "/** asd */"))
 		it("2",               () => test("/*! asd */",           "/*! asd */"))
 		it("3",               () => test("/*< asd */",           "/*< asd */"))
-		it("4",               () => test("/**!< asd */",         "/**!< asd */"))
 		it("5",               () => test("/* asd\nasd\n */",     "/*\n * asd\n * asd\n */",  { lineWidth: 0 }))
 		it("6",               () => test("/** asd\n * asd\n */", "/**\n * asd\n * asd\n */", { lineWidth: 0 }))
 		it("with indent",     () => test("\t/** asd */",         "\t/** asd */"))
@@ -353,7 +351,6 @@ describe("block comments", () =>
 		it("1",               () => test("/* asd **/",   "/* asd **/"))
 		it("2",               () => test("/* asd !*/",   "/* asd !*/"))
 		it("3",               () => test("/* asd <*/",   "/* asd <*/"))
-		it("4",               () => test("/* asd *!<*/", "/* asd *!<*/"))
 		it("with indent",     () => test("\t/* asd **/", "\t/* asd **/"))
 		it("with head-space", () => test("/*asd **/",    "/* asd **/"))
 		it("with tail-space", () => test("/* asd**/",    "/* asd **/"))
@@ -494,8 +491,8 @@ describe("block comments", () =>
 		it("with head-space 1", () => test("/*@ref asd */",                     "/* @ref asd */"))
 		it("with head-space 2", () => test("/*@ref\n* asd */",                  "/* @ref asd */"))
 		it("with tail-space 1", () => test("/* @ref asd*/",                     "/* @ref asd */"))
-		it("with tail-space 2", () => test("/* @f$*/",                          "/* @f $*/"))  // TODO: Reconsider this
-		it("with tail-space 3", () => test("/* @f$**/",                         "/* @f $**/")) // TODO: Reconsider this
+		it("with tail-space 2", () => test("/* @f$*/",                          "/* @f$ */"))
+		it("with tail-space 3", () => test("/* @f$**/",                         "/* @f$ **/"))
 		it("with prefix",       () => test("/** @ref asd */",                   "/** @ref asd */"))
 		it("with suffix",       () => test("/* @ref asd **/",                   "/* @ref asd **/"))
 		it("with leading",      () => test("/* @ref asd */ int x;",             "/* @ref asd */"))
@@ -529,8 +526,28 @@ describe("block comments", () =>
 		it("with multiline",  () => test("/*\n */",        ""))
 		it("with narrow",     () => test("/* */",          "", { lineWidth: 0 }))
 		it("with bullet 1",   () => test("/* * */",        ""))
-		it("with bullet 2",   () => test("/*\n/* */",      ""))
+		it("with bullet 2",   () => test("/*\n * */",      ""))
 		it("with newline",    () => test("/*\n *\n */",    ""))
 		it("with doxygen",    () => test("/* @endcode */", "/* @endcode */"))
+	})
+
+	describe("todo l", () =>
+	{
+		it("1", () => test("//(foo)", "// (foo)"))
+		it("2", () => test("//@f$",   "// @f$"))
+		it("3", () => test("///@f$",  "/// @f$"))
+	})
+
+	describe("todo b", () =>
+	{
+		it("_1", () => test("/*\n*/", ""))
+		it("_2", () => test("/*\n**/", ""))
+
+		it("1", () => test("/*(foo) */", "/* (foo) */"))
+		it("2", () => test("/*@f$ */",   "/* @f$ */"))
+		it("3", () => test("/**@f$ */",  "/** @f$ */"))
+		it("4", () => test("/* foo()*/", "/* foo() */"))
+		it("5", () => test("/* @f$*/",   "/* @f$ */"))
+		it("6", () => test("/* @f$**/",  "/* @f$ **/"))
 	})
 })

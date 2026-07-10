@@ -412,11 +412,12 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 
 function tokenizeBlock(ctx: Context, block: Block)
 {
-	const indentRe  = /\s*/y
-	const prefixRe  = /[^\w\s@\\]+/y
-	const bulletRe  = /[\*-]|\d+[\)\.]/y
+	const indentRe = /\s*/y
+	const bulletRe = /[\*-]|\d+[\)\.]/y
 	const tokenRe   = /\S+/g       // NOTE: Can't use y because we want to skip whitespace
-	const suffixRe  = /[^\w\s]+$/g // NOTE: Can't use y because we want to skip the token
+
+	// TODO: This is per-language
+	const prefixChars = ["/".charCodeAt(0), "*".charCodeAt(0), "!".charCodeAt(0), "<".charCodeAt(0)]
 
 	switch (block.type)
 	{
@@ -426,10 +427,28 @@ function tokenizeBlock(ctx: Context, block: Block)
 			// TODO: Refer to previous node when trailing line comment
 			// OPTIMIZE: Could use char codes to avoid regex and temporary strings
 
+			const suffixEnd   = block.range.end.character
+			var   suffixBegin = suffixEnd
+			if (block.type === BlockType.blockComment)
+			{
+				const suffix = block.prefixes[2]
+				const text   = ctx.getLine(block.range.end.line).text
+				if (text.endsWith(suffix.chars, suffixEnd))
+				{
+					suffixBegin = suffixEnd - suffix.chars.length
+					const prevChar = text.charCodeAt(suffixBegin - 1)
+					if (prefixChars.includes(prevChar))
+						suffixBegin--
+				}
+			}
+
+			const pEnd   = new Position(block.range.end.line, suffixBegin)
+			const rBlock = new Range(block.range.start, pEnd)
+
 			for (var iLine = block.range.start.line; iLine <= block.range.end.line; iLine++)
 			{
 				const line  : TextLine = ctx.getLine(iLine)
-				const rLine : Range    = block.range.intersection(line.range)!
+				const rLine : Range    = rBlock.intersection(line.range)!
 
 				block.lineInfos.push({
 					text:        line.text,
@@ -462,26 +481,20 @@ function tokenizeBlock(ctx: Context, block: Block)
 				}
 				iChar = Math.max(iChar, rLine.start.character)
 
-				// TODO: This is wrong because it looks for non-word characters
-				// Breaks for lines starting with: digit, period, any symbol not meant to be a prefix
-				// We might want to get the first token, then analyze it
-				// Only look for expected prefix + custom?
-
-				// TODO: When this matches the suffix and we try to split it apart, thee suffix ends up
-				// eating the whole thing and leaving the prefix empty
-				// 1. No point in trying to peel the suffix off the prefix in this case
-				// 2. Can we be more precise about the characters we match? Use the language data?
-
+				// TODO: This might need to a character from the suffix
 				// Prefix (split when attached to first token)
-				prefixRe.lastIndex = iChar
-				if ((match = prefixRe.exec(line.text)))
+				const prefix = iLine === block.range.start.line ? block.prefixes[0] : block.prefixes[1] // TODO: Hoist?
+				if (line.text.startsWith(prefix.chars, iChar)) // TODO: This can only fail on continuation lines
 				{
-					// NOTE: This wil match the suffix and trailing comments in pathological cases like
-					// /**//**/
+					var length = prefix.chars.length
+					const nextChar = line.text.charCodeAt(iChar + length)
+					if (prefixChars.includes(nextChar))
+						length++
+					length = Math.min(length, rLine.end.character - iChar)
 
-					iChar = Math.min(prefixRe.lastIndex, rLine.end.character)
+					iChar += length
 					lineInfo.prefix = {
-						begin: match.index,
+						begin: iChar - length,
 						end:   iChar,
 					}
 				}
@@ -503,7 +516,7 @@ function tokenizeBlock(ctx: Context, block: Block)
 
 				// Bullet (split when attached to first token)
 				bulletRe.lastIndex = iChar
-				if ((match = bulletRe.exec(line.text)))
+				if ((match = bulletRe.exec(line.text)) && match.index < rLine.end.character)
 				{
 					iChar = bulletRe.lastIndex
 					lineInfo.type = LineType.bullet
@@ -525,33 +538,12 @@ function tokenizeBlock(ctx: Context, block: Block)
 				}
 			}
 
-			// Suffix (split when attached to last token)
-			if (block.type === BlockType.blockComment)
+			if (suffixBegin < suffixEnd)
 			{
-				// TODO: Attempt to simplify this
 				const lineInfo = block.lineInfos.at(-1)!
-				const useToken = lineInfo.tokenEnd > lineInfo.tokenBegin
-				const token    = useToken ? block.tokens.at(-1)! : lineInfo.prefix
-				const tokenStr = lineInfo.text.slice(token.begin, token.end)
-
-				// NOTE: This should always match
-				suffixRe.lastIndex = 0
-				const match = suffixRe.exec(tokenStr)
-				if (match)
-				{
-					const suffixLen = match[0].length
-
-					token.end -= suffixLen
-					if (useToken && token.end === token.begin)
-					{
-						lineInfo.tokenEnd--
-						block.tokens.pop()
-					}
-
-					lineInfo!.suffix = {
-						begin: token.end,
-						end:   token.end + suffixLen,
-					}
+				lineInfo.suffix = {
+					begin: suffixBegin,
+					end:   suffixEnd,
 				}
 			}
 			break
