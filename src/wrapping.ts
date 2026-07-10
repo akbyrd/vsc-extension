@@ -412,43 +412,18 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 
 function tokenizeBlock(ctx: Context, block: Block)
 {
-	const indentRe = /\s*/y
-	const bulletRe = /[\*-]|\d+[\)\.]/y
-	const tokenRe   = /\S+/g       // NOTE: Can't use y because we want to skip whitespace
-
-	// TODO: This is per-language
-	const prefixChars = ["/".charCodeAt(0), "*".charCodeAt(0), "!".charCodeAt(0), "<".charCodeAt(0)]
+	// NOTE: Can't use y because we want to skip whitespace
+	const tokenRe = /\S+/g
 
 	switch (block.type)
 	{
 		case BlockType.blockComment:
 		case BlockType.lineComment:
 		{
-			// TODO: Refer to previous node when trailing line comment
-			// OPTIMIZE: Could use char codes to avoid regex and temporary strings
-
-			const suffixEnd   = block.range.end.character
-			var   suffixBegin = suffixEnd
-			if (block.type === BlockType.blockComment)
-			{
-				const suffix = block.prefixes[2]
-				const text   = ctx.getLine(block.range.end.line).text
-				if (text.endsWith(suffix.chars, suffixEnd))
-				{
-					suffixBegin = suffixEnd - suffix.chars.length
-					const prevChar = text.charCodeAt(suffixBegin - 1)
-					if (prefixChars.includes(prevChar))
-						suffixBegin--
-				}
-			}
-
-			const pEnd   = new Position(block.range.end.line, suffixBegin)
-			const rBlock = new Range(block.range.start, pEnd)
-
 			for (var iLine = block.range.start.line; iLine <= block.range.end.line; iLine++)
 			{
 				const line  : TextLine = ctx.getLine(iLine)
-				const rLine : Range    = rBlock.intersection(line.range)!
+				const rLine : Range    = block.range.intersection(line.range)!
 
 				block.lineInfos.push({
 					text:        line.text,
@@ -467,67 +442,7 @@ function tokenizeBlock(ctx: Context, block: Block)
 				const lineInfo = block.lineInfos.at(-1)!
 
 				var match : RegExpExecArray | null
-				var iChar = 0
-
-				// Indentation
-				indentRe.lastIndex = iChar
-				match = indentRe.exec(line.text)
-				{
-					iChar = indentRe.lastIndex
-					lineInfo.indent = {
-						begin: match!.index,
-						end:   indentRe.lastIndex,
-					}
-				}
-				iChar = Math.max(iChar, rLine.start.character)
-
-				// TODO: This might need to a character from the suffix
-				// Prefix (split when attached to first token)
-				const prefix = iLine === block.range.start.line ? block.prefixes[0] : block.prefixes[1] // TODO: Hoist?
-				if (line.text.startsWith(prefix.chars, iChar)) // TODO: This can only fail on continuation lines
-				{
-					var length = prefix.chars.length
-					const nextChar = line.text.charCodeAt(iChar + length)
-					if (prefixChars.includes(nextChar))
-						length++
-					length = Math.min(length, rLine.end.character - iChar)
-
-					iChar += length
-					lineInfo.prefix = {
-						begin: iChar - length,
-						end:   iChar,
-					}
-				}
-
-				// TODO: Split indentation and align when there's no prefix
-				// TODO: Maybe this should be in analyzeBlock?
-
-				// Align
-				indentRe.lastIndex = iChar
-				if ((match = indentRe.exec(line.text)))
-				{
-					// NOTE: This will always match
-					iChar = indentRe.lastIndex
-					lineInfo.align = {
-						begin: match.index,
-						end:   indentRe.lastIndex,
-					}
-				}
-
-				// Bullet (split when attached to first token)
-				bulletRe.lastIndex = iChar
-				if ((match = bulletRe.exec(line.text)) && match.index < rLine.end.character)
-				{
-					iChar = bulletRe.lastIndex
-					lineInfo.type = LineType.bullet
-					lineInfo.bullet = {
-						begin: match.index,
-						end:   bulletRe.lastIndex,
-					}
-				}
-
-				// Regular token
-				tokenRe.lastIndex = iChar
+				tokenRe.lastIndex = rLine.start.character
 				while ((match = tokenRe.exec(line.text)) && match.index < rLine.end.character)
 				{
 					lineInfo.tokenEnd++
@@ -538,14 +453,12 @@ function tokenizeBlock(ctx: Context, block: Block)
 				}
 			}
 
-			if (suffixBegin < suffixEnd)
-			{
-				const lineInfo = block.lineInfos.at(-1)!
-				lineInfo.suffix = {
-					begin: suffixBegin,
-					end:   suffixEnd,
-				}
-			}
+			// TODO: Try this (needs to deal with last token not on last line?)
+			//if (block.tokens.length)
+			//{
+			//	const token = block.tokens.at(-1)!
+			//	token.end = Math.min(token.end, block.range.end.character)
+			//}
 			break
 		}
 
@@ -556,6 +469,98 @@ function tokenizeBlock(ctx: Context, block: Block)
 
 function analyzeBlock(ctx: Context, block: Block)
 {
+	// TODO: Split indentation and align when there's no prefix?
+
+	// TODO: This is per-language
+	// TODO: Move to cachePrefixes?
+	const prefixChars = ["/".charCodeAt(0), "*".charCodeAt(0), "!".charCodeAt(0), "<".charCodeAt(0)]
+
+	// Detect suffix
+	{
+		if (block.type === BlockType.blockComment)
+		{
+			const lineInfo = block.lineInfos.at(-1)!
+			const suffix   = block.prefixes[2]
+			const token    = lineInfo.suffix
+
+			token.end   = block.range.end.character
+			token.begin = block.range.end.character
+
+			if (lineInfo.text.endsWith(suffix.chars, token.end))
+			{
+				const prevChar = lineInfo.text.charCodeAt(token.end - suffix.chars.length - 1)
+				const hasExtra = prefixChars.includes(prevChar)
+				token.begin -= suffix.chars.length + (hasExtra ? 1 : 0)
+
+				while (lineInfo.tokenEnd > lineInfo.tokenBegin)
+				{
+					const cToken = block.tokens[lineInfo.tokenEnd - 1]
+					if (cToken.begin >= token.begin)
+					{
+						lineInfo.tokenEnd--
+						continue
+					}
+					cToken.end = Math.min(cToken.end, token.begin)
+					break
+				}
+			}
+		}
+	}
+
+	// Detect prefix
+	{
+		for (var i = 0; i < block.lineInfos.length; i++)
+		{
+			const lineInfo = block.lineInfos[i]
+			const prefix   = block.prefixes[i === 0 ? 0 : 1]
+			const token    = lineInfo.prefix
+
+			if (lineInfo.tokenEnd > lineInfo.tokenBegin)
+			{
+				const cToken = block.tokens[lineInfo.tokenBegin]
+				if (lineInfo.text.startsWith(prefix.chars, cToken.begin))
+				{
+					const nextChar = lineInfo.text.charCodeAt(cToken.begin + prefix.chars.length)
+					const hasExtra = prefixChars.includes(nextChar)
+
+					token.begin = cToken.begin
+					token.end   = cToken.begin + prefix.chars.length + (hasExtra ? 1 : 0)
+
+					cToken.begin = token.end
+					if (cToken.begin >= cToken.end)
+						lineInfo.tokenBegin++
+				}
+			}
+		}
+	}
+
+	// Detect bullet
+	{
+		const bulletRe = /[\*-]|\d+[\)\.]/y
+
+		for (var i = 0; i < block.lineInfos.length; i++)
+		{
+			const lineInfo = block.lineInfos[i]
+			const token    = lineInfo.bullet
+
+			if (lineInfo.tokenEnd > lineInfo.tokenBegin)
+			{
+				const cToken = block.tokens[lineInfo.tokenBegin]
+				bulletRe.lastIndex = cToken.begin
+				if (bulletRe.exec(lineInfo.text))
+				{
+					lineInfo.type = LineType.bullet
+					token.begin   = cToken.begin
+					token.end     = bulletRe.lastIndex
+
+					cToken.begin = bulletRe.lastIndex
+					if (cToken.begin >= cToken.end)
+						lineInfo.tokenBegin++
+				}
+			}
+		}
+	}
+
 	// Detect Doxygen commands
 	{
 		// Inline  - link/endlink, anchor, emoji, cite, ref, em, a, b, c, e, n, p, f$, f(, f)
@@ -857,8 +862,8 @@ export async function wrapText(ctx: Context): Promise<WrapResult[]>
 	const results: WrapResult[] = []
 	for (const block of blocks)
 	{
-		const _1      = tokenizeBlock(ctx, block)
-		const _2      = analyzeBlock(ctx, block)
+		tokenizeBlock(ctx, block)
+		analyzeBlock(ctx, block)
 		const wrapped = wrapBlock(ctx, block)
 		results.push({ range: block.range, text: wrapped })
 	}
