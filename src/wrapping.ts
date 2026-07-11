@@ -679,8 +679,8 @@ function analyzeBlock(ctx: Context, block: Block)
 		var lastType = LineType.null
 		for (const lineInfo of block.lineInfos)
 		{
-			const isBulletContinuation = lineInfo.bullet.end > lineInfo.bullet.begin
-			if (lineInfo.type !== lastType || isBulletContinuation)
+			const isNewBullet = lineInfo.bullet.end > lineInfo.bullet.begin
+			if (lineInfo.type !== lastType || isNewBullet)
 			{
 				runLength = 0
 				lastType = lineInfo.type
