@@ -176,29 +176,26 @@ enum LineType
 }
 
 type LineInfo = {
-	text        : string,
-	type        : LineType,
-	tokenBegin  : number,
-	tokenEnd    : number,
-	indent      : Token,
-	prefix      : Token,
-	align       : Token,
-	bullet      : Token,
-	suffix      : Token,
-	indentWidth : number, // TODO: Move to block
-	alignWidth  : number,
-	runLength   : number,
+	text       : string,
+	type       : LineType,
+	tokenBegin : number,
+	tokenEnd   : number,
+	bullet     : Token,
+	alignWidth : number,
+	runLength  : number,
 }
 
 type Block = {
-	type       : BlockType,
-	range      : Range,
-	languageId : string
-	isLeading  : boolean,
-	isTrailing : boolean,
-	lineInfos  : LineInfo[],
-	prefixes   : PrefixSet,
-	tokens     : Token[],
+	type        : BlockType,
+	range       : Range,
+	languageId  : string
+	isLeading   : boolean,
+	isTrailing  : boolean,
+	lineInfos   : LineInfo[],
+	prefixes    : PrefixSet,
+	tokens      : Token[],
+	prefix      : Token, // TODO: Remove this
+	indentWidth : number,
 }
 
 function toPosition(p: ts.Point): Position
@@ -360,14 +357,16 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 					const isTrailing = prevEnd?.row === start.line
 
 					blocks.push({
-						type:       BlockType.lineComment,
-						range:      new Range(start, end),
-						languageId: ctx.languageId,
-						isLeading:  false,
-						isTrailing: isTrailing,
-						lineInfos:  [],
-						prefixes:   structuredClone(languageData.lineComment),
-						tokens:     [],
+						type:        BlockType.lineComment,
+						range:       new Range(start, end),
+						languageId:  ctx.languageId,
+						isLeading:   false,
+						isTrailing:  isTrailing,
+						lineInfos:   [],
+						prefixes:    structuredClone(languageData.lineComment),
+						tokens:      [],
+						prefix:      { begin: 0, end: 0 },
+						indentWidth: 0,
 					})
 				}
 				else
@@ -377,14 +376,16 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 					const isLeading  = node.endPosition.row === node.nextSibling?.startPosition.row
 
 					blocks.push({
-						type:       BlockType.blockComment,
-						range:      toRange(capture.node),
-						languageId: ctx.languageId,
-						isLeading:  isLeading,
-						isTrailing: isTrailing,
-						lineInfos:  [],
-						prefixes:   structuredClone(languageData.blockComment),
-						tokens:     [],
+						type:        BlockType.blockComment,
+						range:       toRange(capture.node),
+						languageId:  ctx.languageId,
+						isLeading:   isLeading,
+						isTrailing:  isTrailing,
+						lineInfos:   [],
+						prefixes:    structuredClone(languageData.blockComment),
+						tokens:      [],
+						prefix:      { begin: 0, end: 0 },
+						indentWidth: 0,
 					})
 				}
 			}
@@ -395,14 +396,16 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 		for (const selection of ctx.selections)
 		{
 			blocks.push({
-				type:       BlockType.prose,
-				range:      selection,
-				languageId: ctx.languageId,
-				isLeading:  false,
-				isTrailing: false,
-				lineInfos:  [],
-				prefixes:   makePrefixSet(""),
-				tokens:     [],
+				type:        BlockType.prose,
+				range:       selection,
+				languageId:  ctx.languageId,
+				isLeading:   false,
+				isTrailing:  false,
+				lineInfos:   [],
+				prefixes:    makePrefixSet(""),
+				tokens:      [],
+				prefix:      { begin: 0, end: 0 },
+				indentWidth: 0,
 			})
 		}
 	}
@@ -426,18 +429,13 @@ function tokenizeBlock(ctx: Context, block: Block)
 				const rLine : Range    = block.range.intersection(line.range)!
 
 				block.lineInfos.push({
-					text:        line.text,
-					type:        LineType.normal,
-					tokenBegin:  block.tokens.length,
-					tokenEnd:    block.tokens.length,
-					indent:      { begin: 0, end: 0 },
-					prefix:      { begin: 0, end: 0 },
-					align:       { begin: 0, end: 0 },
-					bullet:      { begin: 0, end: 0 },
-					suffix:      { begin: 0, end: 0 },
-					indentWidth: 0,
-					alignWidth:  0,
-					runLength:   0,
+					text:       line.text,
+					type:       LineType.normal,
+					tokenBegin: block.tokens.length,
+					tokenEnd:   block.tokens.length,
+					bullet:     { begin: 0, end: 0 },
+					alignWidth: 0,
+					runLength:  0,
 				})
 				const lineInfo = block.lineInfos.at(-1)!
 
@@ -481,27 +479,21 @@ function analyzeBlock(ctx: Context, block: Block)
 		{
 			const lineInfo = block.lineInfos.at(-1)!
 			const suffix   = block.prefixes[2]
-			const token    = lineInfo.suffix
-
-			token.end   = block.range.end.character
-			token.begin = block.range.end.character
+			const token    = { begin: block.range.end.character, end: block.range.end.character }
 
 			if (lineInfo.text.endsWith(suffix.chars, token.end))
 			{
 				const prevChar = lineInfo.text.charCodeAt(token.end - suffix.chars.length - 1)
 				const hasExtra = prefixChars.includes(prevChar)
 				token.begin -= suffix.chars.length + (hasExtra ? 1 : 0)
+				suffix.chars = lineInfo.text.slice(token.begin, token.end)
 
-				while (lineInfo.tokenEnd > lineInfo.tokenBegin)
+				if (lineInfo.tokenEnd > lineInfo.tokenBegin)
 				{
 					const cToken = block.tokens[lineInfo.tokenEnd - 1]
-					if (cToken.begin >= token.begin)
-					{
-						lineInfo.tokenEnd--
-						continue
-					}
 					cToken.end = Math.min(cToken.end, token.begin)
-					break
+					if (cToken.end <= cToken.begin)
+						lineInfo.tokenEnd--
 				}
 			}
 		}
@@ -509,24 +501,39 @@ function analyzeBlock(ctx: Context, block: Block)
 
 	// Detect prefix
 	{
+		const defaults = [ block.prefixes[0].chars, block.prefixes[1].chars ]
 		for (var i = 0; i < block.lineInfos.length; i++)
 		{
 			const lineInfo = block.lineInfos[i]
-			const prefix   = block.prefixes[i === 0 ? 0 : 1]
-			const token    = lineInfo.prefix
+			const prefix   = defaults[i === 0 ? 0 : 1]
 
 			if (lineInfo.tokenEnd > lineInfo.tokenBegin)
 			{
 				const cToken = block.tokens[lineInfo.tokenBegin]
-				if (lineInfo.text.startsWith(prefix.chars, cToken.begin))
+				if (lineInfo.text.startsWith(prefix, cToken.begin))
 				{
-					const nextChar = lineInfo.text.charCodeAt(cToken.begin + prefix.chars.length)
+					const nextChar = lineInfo.text.charCodeAt(cToken.begin + prefix.length)
 					const hasExtra = prefixChars.includes(nextChar)
 
-					token.begin = cToken.begin
-					token.end   = cToken.begin + prefix.chars.length + (hasExtra ? 1 : 0)
+					const begin = cToken.begin
+					const end   = cToken.begin + prefix.length + (hasExtra ? 1 : 0)
+					const prefixStr = lineInfo.text.slice(begin, end)
 
-					cToken.begin = token.end
+					if (i === 0)
+					{
+						block.prefixes[0].chars = prefixStr
+						if (block.type !== BlockType.blockComment)
+							block.prefixes[1].chars = prefixStr
+
+						block.prefix = { begin, end }
+					}
+					else if (i === 1)
+					{
+						if (block.type === BlockType.blockComment)
+							block.prefixes[1].chars = prefixStr
+					}
+
+					cToken.begin = end
 					if (cToken.begin >= cToken.end)
 						lineInfo.tokenBegin++
 				}
@@ -588,12 +595,9 @@ function analyzeBlock(ctx: Context, block: Block)
 
 	// Detect indentation
 	{
-		if (!block.isTrailing)
-		{
-			const lineInfo = block.lineInfos[0]
-			lineInfo.indentWidth = consumeIndent(lineInfo.text, 0, 0, ctx.tabWidth)
-			lineInfo.indentWidth = Math.floor(lineInfo.indentWidth / ctx.tabWidth) * ctx.tabWidth
-		}
+		const lineInfo = block.lineInfos[0]
+		block.indentWidth = consumeIndent(lineInfo.text, 0, 0, ctx.tabWidth)
+		block.indentWidth = Math.floor(block.indentWidth / ctx.tabWidth) * ctx.tabWidth
 	}
 
 	// Detect blank lines
@@ -630,19 +634,19 @@ function analyzeBlock(ctx: Context, block: Block)
 			if (lineInfo.type !== LineType.bullet)
 				continue
 
-			const token     = lineInfo.prefix
+			const token     = block.prefix
 			const hasPrefix = token.end > token.begin
 
 			if (hasPrefix)
 			{
-				const width = lineInfo.indentWidth + (lineInfo.prefix.end - lineInfo.prefix.begin)
-				const begin = lineInfo.prefix.end
+				const width = block.indentWidth + (block.prefix.end - block.prefix.begin)
+				const begin = block.prefix.end
 				const align = consumeIndent(lineInfo.text, begin, width, ctx.tabWidth)
 				lineInfo.alignWidth = Math.max(1, align)
 			}
 			else
 			{
-				const offset = lineInfo.indentWidth
+				const offset = block.indentWidth
 				const align  = consumeIndent(lineInfo.text, 0, 0, ctx.tabWidth)
 				lineInfo.alignWidth = Math.max(1, align - offset)
 			}
@@ -655,54 +659,6 @@ function analyzeBlock(ctx: Context, block: Block)
 					break
 
 				lineInfo.type = LineType.bullet
-			}
-		}
-	}
-
-	// Detect custom prefix/suffix
-	{
-		switch (block.type)
-		{
-			case BlockType.lineComment:
-			{
-				const lineInfo = block.lineInfos[0]
-				const token    = lineInfo.prefix
-				const prefix   = lineInfo.text.slice(token.begin, token.end)
-				block.prefixes[0].chars = prefix
-				block.prefixes[1].chars = prefix
-				break
-			}
-
-			case BlockType.blockComment:
-			{
-				// First line
-				{
-					const lineInfo = block.lineInfos[0]
-					const token    = lineInfo.prefix
-					const prefix   = lineInfo.text.slice(token.begin, token.end)
-					block.prefixes[0].chars = prefix
-				}
-
-				// Second line
-				if (block.lineInfos.length > 1)
-				{
-					const lineInfo = block.lineInfos[1]
-					const token    = lineInfo.prefix
-					if (token.end > token.begin)
-					{
-						const prefix = lineInfo.text.slice(token.begin, token.end)
-						block.prefixes[1].chars = prefix
-					}
-				}
-
-				// Last line
-				{
-					const lineInfo = block.lineInfos.at(-1)!
-					const token    = lineInfo.suffix
-					const suffix   = lineInfo.text.slice(token.begin, token.end)
-					block.prefixes[2].chars = suffix
-				}
-				break
 			}
 		}
 	}
@@ -740,7 +696,7 @@ function wrapBlock(ctx: Context, block: Block): string
 	const lines : string[] = []
 
 	const lineWidth   = block.isLeading || block.isTrailing ? Number.POSITIVE_INFINITY : ctx.lineWidth
-	const indentWidth = block.lineInfos[0].indentWidth
+	const indentWidth = block.indentWidth
 	const indent      = ctx.useSpaces ? " ".repeat(indentWidth) : "\t".repeat(indentWidth / ctx.tabWidth)
 	const p1          = block.prefixes[1]
 	const prefix      = " ".repeat(p1.align) + p1.chars
