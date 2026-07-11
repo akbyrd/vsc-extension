@@ -176,13 +176,14 @@ enum LineType
 }
 
 type LineInfo = {
-	text       : string,
-	type       : LineType,
-	tokenBegin : number,
-	tokenEnd   : number,
-	bullet     : Token,
-	alignWidth : number,
-	runLength  : number,
+	text        : string,
+	type        : LineType,
+	tokenBegin  : number,
+	tokenEnd    : number,
+	prefix      : Token,
+	bullet      : Token,
+	bulletAlign : number,
+	runLength   : number,
 }
 
 type Block = {
@@ -194,7 +195,6 @@ type Block = {
 	lineInfos   : LineInfo[],
 	prefixes    : PrefixSet,
 	tokens      : Token[],
-	prefix      : Token, // TODO: Remove this
 	indentWidth : number,
 }
 
@@ -215,21 +215,39 @@ function toPoint(p: Position): ts.Point
 	return { row: p.line, column: p.character }
 }
 
-function consumeIndent(s: string, begin: number, width: number, tabSize: number): number
+interface IndentResult { end: number, width: number }
+function consumeIndent(s: string, begin: number, width: number, maxWidth: number, tabSize: number): IndentResult
 {
+	const space = ' '.charCodeAt(0)
+	const tab   = '\t'.charCodeAt(0)
 	const prevWidth = width
 
-	for (; begin < s.length; ++begin)
+	for (; begin < s.length && width < maxWidth; ++begin)
 	{
-		const char = s[begin]
+		const char = s.charCodeAt(begin)
 
-		     if (char === ' ')  width += 1
-		else if (char === '\t') width = Math.floor((width + tabSize) / tabSize) * tabSize
+		     if (char === tab)   width = Math.floor((width + tabSize) / tabSize) * tabSize
+		else if (char === space) width += 1
 		else break
 	}
 
-	const spaces = width - prevWidth
-	return spaces
+	return {end: begin, width: width - prevWidth}
+}
+
+function visualColumn(s: string, end: number, tabSize: number): number
+{
+	const tab = '\t'.charCodeAt(0)
+
+	var width = 0
+	for (var i = 0; i < end; ++i)
+	{
+		const char = s.charCodeAt(i)
+
+		if (char === tab) width = Math.floor((width + tabSize) / tabSize) * tabSize
+		else              width += 1
+	}
+
+	return width
 }
 
 async function parseDocument(ctx: Context): Promise<Parse|undefined>
@@ -365,7 +383,6 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 						lineInfos:   [],
 						prefixes:    structuredClone(languageData.lineComment),
 						tokens:      [],
-						prefix:      { begin: 0, end: 0 },
 						indentWidth: 0,
 					})
 				}
@@ -384,7 +401,6 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 						lineInfos:   [],
 						prefixes:    structuredClone(languageData.blockComment),
 						tokens:      [],
-						prefix:      { begin: 0, end: 0 },
 						indentWidth: 0,
 					})
 				}
@@ -404,7 +420,6 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 				lineInfos:   [],
 				prefixes:    makePrefixSet(""),
 				tokens:      [],
-				prefix:      { begin: 0, end: 0 },
 				indentWidth: 0,
 			})
 		}
@@ -429,13 +444,14 @@ function tokenizeBlock(ctx: Context, block: Block)
 				const rLine : Range    = block.range.intersection(line.range)!
 
 				block.lineInfos.push({
-					text:       line.text,
-					type:       LineType.normal,
-					tokenBegin: block.tokens.length,
-					tokenEnd:   block.tokens.length,
-					bullet:     { begin: 0, end: 0 },
-					alignWidth: 0,
-					runLength:  0,
+					text:        line.text,
+					type:        LineType.normal,
+					tokenBegin:  block.tokens.length,
+					tokenEnd:    block.tokens.length,
+					prefix:      { begin: 0, end: 0 },
+					bullet:      { begin: 0, end: 0 },
+					bulletAlign: 0,
+					runLength:   0,
 				})
 				const lineInfo = block.lineInfos.at(-1)!
 
@@ -473,7 +489,7 @@ function analyzeBlock(ctx: Context, block: Block)
 	// TODO: Move to cachePrefixes?
 	const prefixChars = ["/".charCodeAt(0), "*".charCodeAt(0), "!".charCodeAt(0), "<".charCodeAt(0)]
 
-	// Detect suffix
+	// Detect suffix (and split if attached to final token)
 	{
 		if (block.type === BlockType.blockComment)
 		{
@@ -499,7 +515,15 @@ function analyzeBlock(ctx: Context, block: Block)
 		}
 	}
 
-	// Detect prefix
+	// Detect indentation
+	{
+		const lineInfo = block.lineInfos[0]
+		const indent   = consumeIndent(lineInfo.text, 0, 0, Number.POSITIVE_INFINITY, ctx.tabWidth)
+		block.indentWidth = indent.width
+		block.indentWidth = Math.floor(block.indentWidth / ctx.tabWidth) * ctx.tabWidth
+	}
+
+	// Detect prefix (and split if attached to first token)
 	{
 		const defaults = [ block.prefixes[0].chars, block.prefixes[1].chars ]
 		for (var i = 0; i < block.lineInfos.length; i++)
@@ -519,13 +543,13 @@ function analyzeBlock(ctx: Context, block: Block)
 					const end   = cToken.begin + prefix.length + (hasExtra ? 1 : 0)
 					const prefixStr = lineInfo.text.slice(begin, end)
 
+					lineInfo.prefix = { begin, end }
+
 					if (i === 0)
 					{
 						block.prefixes[0].chars = prefixStr
 						if (block.type !== BlockType.blockComment)
 							block.prefixes[1].chars = prefixStr
-
-						block.prefix = { begin, end }
 					}
 					else if (i === 1)
 					{
@@ -536,6 +560,11 @@ function analyzeBlock(ctx: Context, block: Block)
 					cToken.begin = end
 					if (cToken.begin >= cToken.end)
 						lineInfo.tokenBegin++
+				}
+				else
+				{
+					const indent = consumeIndent(lineInfo.text, 0, 0, block.indentWidth, ctx.tabWidth)
+					lineInfo.prefix = { begin: indent.end, end: indent.end }
 				}
 			}
 		}
@@ -593,13 +622,6 @@ function analyzeBlock(ctx: Context, block: Block)
 		}
 	}
 
-	// Detect indentation
-	{
-		const lineInfo = block.lineInfos[0]
-		block.indentWidth = consumeIndent(lineInfo.text, 0, 0, ctx.tabWidth)
-		block.indentWidth = Math.floor(block.indentWidth / ctx.tabWidth) * ctx.tabWidth
-	}
-
 	// Detect blank lines
 	{
 		// NOTE: If a line is both a bullet and blank, blank wins
@@ -625,7 +647,7 @@ function analyzeBlock(ctx: Context, block: Block)
 		}
 	}
 
-	// Detect alignment and bullet continuation
+	// Detect bullet continuation and alignment
 	{
 		for (var i = 0; i < block.lineInfos.length; i++)
 		{
@@ -634,22 +656,10 @@ function analyzeBlock(ctx: Context, block: Block)
 			if (lineInfo.type !== LineType.bullet)
 				continue
 
-			const token     = block.prefix
-			const hasPrefix = token.end > token.begin
-
-			if (hasPrefix)
-			{
-				const width = block.indentWidth + (block.prefix.end - block.prefix.begin)
-				const begin = block.prefix.end
-				const align = consumeIndent(lineInfo.text, begin, width, ctx.tabWidth)
-				lineInfo.alignWidth = Math.max(1, align)
-			}
-			else
-			{
-				const offset = block.indentWidth
-				const align  = consumeIndent(lineInfo.text, 0, 0, ctx.tabWidth)
-				lineInfo.alignWidth = Math.max(1, align - offset)
-			}
+			// TODO: Don't parse twice
+			const prefixEnd   = visualColumn(lineInfo.text, lineInfo.prefix.end,   ctx.tabWidth)
+			const bulletBegin = visualColumn(lineInfo.text, lineInfo.bullet.begin, ctx.tabWidth)
+			lineInfo.bulletAlign = Math.max(1, bulletBegin - prefixEnd)
 
 			for (; i < block.lineInfos.length - 1; i++)
 			{
@@ -690,8 +700,8 @@ function wrapBlock(ctx: Context, block: Block): string
 	// * Whitespace between content tokens is replaced with a single space
 
 	// NOTE: Line layout
-	// First line    - <indent><prefixAlign><prefix><contentAlign><bullet><content>
-	// Continue line - <indent><prefixAlign><prefix><contentAlign><bulletAlign><content>
+	// First line    - <indent><prefixAlign><prefix><bullet><content>
+	// Continue line - <indent><prefixAlign><prefix><bulletAlign><content>
 
 	const lines : string[] = []
 
@@ -725,9 +735,9 @@ function wrapBlock(ctx: Context, block: Block): string
 		if (lineInfo.runLength === 0)
 		{
 			flush()
-			const contentAlign = " ".repeat(lineInfo.alignWidth)
-			const bulletToken  = lineInfo.text.slice(lineInfo.bullet.begin, lineInfo.bullet.end)
-			bullet = `${contentAlign}${bulletToken}`
+			const bulletAlign = " ".repeat(lineInfo.bulletAlign)
+			const bulletToken = lineInfo.text.slice(lineInfo.bullet.begin, lineInfo.bullet.end)
+			bullet = `${bulletAlign}${bulletToken}`
 		}
 
 		for (var i = lineInfo.tokenBegin; i < lineInfo.tokenEnd; i++)

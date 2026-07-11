@@ -469,6 +469,7 @@ describe("block comments", () =>
 		it("with narrow 1",   () => test("/*  * asd */",                 "/*\n *  * asd\n */",            { lineWidth: 0 }))
 		it("with narrow 2",   () => test("/*  * asd asd */",             "/*\n *  * asd\n *    asd\n */", { lineWidth: 0 }))
 		it("with newline",    () => test("/*  * asd\n *\n *  * asd */",  "/*\n *  * asd\n *\n *  * asd\n */"))
+		it("misaligned",      () => test("/*  * asd\n  *  * asd */",     "/*\n *  * asd\n *  * asd\n */")) // TODO: Review this
 	})
 
 	// Test preserved doxygen
@@ -549,5 +550,8 @@ describe("block comments", () =>
 		it("4", () => test("/* foo()*/", "/* foo() */"))
 		it("5", () => test("/* @f$*/",   "/* @f$ */"))
 		it("6", () => test("/* @f$**/",  "/* @f$ **/"))
+
+		// A bullet with no prefix aligns to the expected indentation, not the line start
+		it("7", () => test("\t/*  * asd\n\t  - asd\n\t */", "\t/*\n\t *  * asd\n\t *  - asd\n\t */"))
 	})
 })
