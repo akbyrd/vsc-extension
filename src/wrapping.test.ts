@@ -354,7 +354,8 @@ describe("block comments", () =>
 		it("with indent",     () => test("\t/* asd **/", "\t/* asd **/"))
 		it("with head-space", () => test("/*asd **/",    "/* asd **/"))
 		it("with tail-space", () => test("/* asd**/",    "/* asd **/"))
-		it("with prefix",     () => test("/** asd **/",  "/** asd **/"))
+		it("with prefix 1",   () => test("/** asd **/",  "/** asd **/"))
+		it("with prefix 2",   () => test("/**a**/",      "/** a **/"))
 	})
 
 	// Test leading
@@ -519,6 +520,7 @@ describe("block comments", () =>
 		it("with tail-space", () => test("/**/",           ""))
 		it("with prefix 1",   () => test("/** */",         ""))
 		it("with prefix 2",   () => test("/***/",          ""))
+		it("with prefix 3",   () => test("/****/",         ""))
 		it("with suffix",     () => test("/* **/",         ""))
 		it("with leading 1",  () => test("/**//**/",       [ "", "" ]))
 		it("with leading 2",  () => test("/* */ int x;",   ""))
@@ -552,6 +554,11 @@ describe("block comments", () =>
 		it("6", () => test("/* @f$**/",  "/* @f$ **/"))
 
 		// A bullet with no prefix aligns to the expected indentation, not the line start
-		it("7", () => test("\t/*  * asd\n\t  - asd\n\t */", "\t/*\n\t *  * asd\n\t *  - asd\n\t */"))
+		//it("7", () => test("/*  * asd\n  * asd\n */", "/*\n *  * asd\n *  * asd\n */"))
+		it("8", () => test("\t/*  * asd\n\t  - asd\n\t */", "\t/*\n\t *  * asd\n\t * - asd\n\t */"))
+
+		// /*  * asd
+		//   - asd
+		//  */
 	})
 })

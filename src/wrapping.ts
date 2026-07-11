@@ -215,14 +215,13 @@ function toPoint(p: Position): ts.Point
 	return { row: p.line, column: p.character }
 }
 
-interface IndentResult { end: number, width: number }
-function consumeIndent(s: string, begin: number, width: number, maxWidth: number, tabSize: number): IndentResult
+function consumeIndent(s: string, begin: number, width: number, tabSize: number)
 {
 	const space = ' '.charCodeAt(0)
 	const tab   = '\t'.charCodeAt(0)
 	const prevWidth = width
 
-	for (; begin < s.length && width < maxWidth; ++begin)
+	for (; begin < s.length; ++begin)
 	{
 		const char = s.charCodeAt(begin)
 
@@ -231,7 +230,7 @@ function consumeIndent(s: string, begin: number, width: number, maxWidth: number
 		else break
 	}
 
-	return {end: begin, width: width - prevWidth}
+	return width - prevWidth
 }
 
 function visualColumn(s: string, end: number, tabSize: number): number
@@ -487,111 +486,102 @@ function analyzeBlock(ctx: Context, block: Block)
 
 	// TODO: This is per-language
 	// TODO: Move to cachePrefixes?
-	const prefixChars = ["/".charCodeAt(0), "*".charCodeAt(0), "!".charCodeAt(0), "<".charCodeAt(0)]
-
-	// Detect suffix (and split if attached to final token)
-	{
-		if (block.type === BlockType.blockComment)
-		{
-			const lineInfo = block.lineInfos.at(-1)!
-			const suffix   = block.prefixes[2]
-			const token    = { begin: block.range.end.character, end: block.range.end.character }
-
-			if (lineInfo.text.endsWith(suffix.chars, token.end))
-			{
-				const prevChar = lineInfo.text.charCodeAt(token.end - suffix.chars.length - 1)
-				const hasExtra = prefixChars.includes(prevChar)
-				token.begin -= suffix.chars.length + (hasExtra ? 1 : 0)
-				suffix.chars = lineInfo.text.slice(token.begin, token.end)
-
-				if (lineInfo.tokenEnd > lineInfo.tokenBegin)
-				{
-					const cToken = block.tokens[lineInfo.tokenEnd - 1]
-					cToken.end = Math.min(cToken.end, token.begin)
-					if (cToken.end <= cToken.begin)
-						lineInfo.tokenEnd--
-				}
-			}
-		}
-	}
+	const prefixChars  = ["/".charCodeAt(0), "*".charCodeAt(0), "!".charCodeAt(0), "<".charCodeAt(0)]
+	const langPrefixes = [ block.prefixes[0].chars, block.prefixes[1].chars, block.prefixes[2].chars ]
 
 	// Detect indentation
 	{
 		const lineInfo = block.lineInfos[0]
-		const indent   = consumeIndent(lineInfo.text, 0, 0, Number.POSITIVE_INFINITY, ctx.tabWidth)
-		block.indentWidth = indent.width
+		block.indentWidth = consumeIndent(lineInfo.text, 0, 0, ctx.tabWidth)
 		block.indentWidth = Math.floor(block.indentWidth / ctx.tabWidth) * ctx.tabWidth
 	}
 
-	// Detect prefix (and split if attached to first token)
+	// Detect suffix
 	{
-		const defaults = [ block.prefixes[0].chars, block.prefixes[1].chars ]
-		for (var i = 0; i < block.lineInfos.length; i++)
+		if (block.type === BlockType.blockComment)
 		{
-			const lineInfo = block.lineInfos[i]
-			const prefix   = defaults[i === 0 ? 0 : 1]
+			const lineInfo = block.lineInfos.at(-1)!
 
 			if (lineInfo.tokenEnd > lineInfo.tokenBegin)
 			{
-				const cToken = block.tokens[lineInfo.tokenBegin]
-				if (lineInfo.text.startsWith(prefix, cToken.begin))
+				const langSuffix = langPrefixes[2]
+				const suffix     = block.prefixes[2]
+				const token      = block.tokens[lineInfo.tokenEnd - 1]
+
+				if (lineInfo.text.endsWith(langSuffix, token.end))
 				{
-					const nextChar = lineInfo.text.charCodeAt(cToken.begin + prefix.length)
-					const hasExtra = prefixChars.includes(nextChar)
+					const requiredLen = langPrefixes[0].length + langPrefixes[2].length
+					const canExtend   = block.tokens.length > 1 || (token.end - token.begin) > requiredLen
+					const prevChar    = lineInfo.text.charCodeAt(token.end - langSuffix.length - 1)
+					const hasExtra    = canExtend && prefixChars.includes(prevChar)
+					const suffixEnd   = token.end
 
-					const begin = cToken.begin
-					const end   = cToken.begin + prefix.length + (hasExtra ? 1 : 0)
-					const prefixStr = lineInfo.text.slice(begin, end)
-
-					lineInfo.prefix = { begin, end }
-
-					if (i === 0)
-					{
-						block.prefixes[0].chars = prefixStr
-						if (block.type !== BlockType.blockComment)
-							block.prefixes[1].chars = prefixStr
-					}
-					else if (i === 1)
-					{
-						if (block.type === BlockType.blockComment)
-							block.prefixes[1].chars = prefixStr
-					}
-
-					cToken.begin = end
-					if (cToken.begin >= cToken.end)
-						lineInfo.tokenBegin++
-				}
-				else
-				{
-					const indent = consumeIndent(lineInfo.text, 0, 0, block.indentWidth, ctx.tabWidth)
-					lineInfo.prefix = { begin: indent.end, end: indent.end }
+					token.end -= langSuffix.length + (hasExtra ? 1 : 0)
+					suffix.chars = lineInfo.text.slice(token.end, suffixEnd)
+					if (token.begin === token.end) lineInfo.tokenEnd--
 				}
 			}
 		}
+	}
+
+	// Detect prefix
+	{
+		for (var i = 0; i < block.lineInfos.length; i++)
+		{
+			const lineInfo = block.lineInfos[i]
+
+			if (lineInfo.tokenEnd > lineInfo.tokenBegin)
+			{
+				const iPrefix     = i === 0 ? 0 : 1
+				const langPrefix  = langPrefixes[iPrefix]
+				const prefix      = block.prefixes[iPrefix]
+				const token       = block.tokens[lineInfo.tokenBegin]
+				const prefixBegin = token.begin
+
+				if (lineInfo.text.startsWith(langPrefix, token.begin))
+				{
+					const requiredLen = langPrefixes[0].length
+					const canExtend   = block.tokens.length > 1 || (token.end - token.begin) > requiredLen
+					const nextChar    = lineInfo.text.charCodeAt(token.begin + langPrefix.length)
+					const hasExtra    = canExtend && prefixChars.includes(nextChar)
+
+					token.begin += langPrefix.length + (hasExtra ? 1 : 0)
+					if (i < 2) prefix.chars = lineInfo.text.slice(prefixBegin, token.begin)
+					if (token.begin === token.end) lineInfo.tokenBegin++
+				}
+
+				lineInfo.prefix = { begin: prefixBegin, end: token.begin }
+			}
+		}
+
+		if (block.type === BlockType.lineComment)
+			block.prefixes[1] = block.prefixes[0]
 	}
 
 	// Detect bullet
 	{
 		const bulletRe = /[\*-]|\d+[\)\.]/y
 
-		for (var i = 0; i < block.lineInfos.length; i++)
+		for (const lineInfo of block.lineInfos)
 		{
-			const lineInfo = block.lineInfos[i]
-			const token    = lineInfo.bullet
-
 			if (lineInfo.tokenEnd > lineInfo.tokenBegin)
 			{
-				const cToken = block.tokens[lineInfo.tokenBegin]
-				bulletRe.lastIndex = cToken.begin
+				const token = block.tokens[lineInfo.tokenBegin]
+
+				bulletRe.lastIndex = token.begin
 				if (bulletRe.exec(lineInfo.text))
 				{
-					lineInfo.type = LineType.bullet
-					token.begin   = cToken.begin
-					token.end     = bulletRe.lastIndex
+					const bulletBegin = token.begin
 
-					cToken.begin = bulletRe.lastIndex
-					if (cToken.begin >= cToken.end)
-						lineInfo.tokenBegin++
+					token.begin = bulletRe.lastIndex
+					if (token.begin === token.end) lineInfo.tokenBegin++
+
+					lineInfo.type   = LineType.bullet
+					lineInfo.bullet = { begin: bulletBegin, end: token.begin }
+
+					const prefixVEnd   = visualColumn(lineInfo.text, lineInfo.prefix.end,   ctx.tabWidth)
+					const bulletVBegin = visualColumn(lineInfo.text, lineInfo.bullet.begin, ctx.tabWidth)
+					lineInfo.bulletAlign = Math.max(1, bulletVBegin - prefixVEnd)
 				}
 			}
 		}
@@ -647,7 +637,7 @@ function analyzeBlock(ctx: Context, block: Block)
 		}
 	}
 
-	// Detect bullet continuation and alignment
+	// Detect bullet continuation
 	{
 		for (var i = 0; i < block.lineInfos.length; i++)
 		{
@@ -656,16 +646,11 @@ function analyzeBlock(ctx: Context, block: Block)
 			if (lineInfo.type !== LineType.bullet)
 				continue
 
-			// TODO: Don't parse twice
-			const prefixEnd   = visualColumn(lineInfo.text, lineInfo.prefix.end,   ctx.tabWidth)
-			const bulletBegin = visualColumn(lineInfo.text, lineInfo.bullet.begin, ctx.tabWidth)
-			lineInfo.bulletAlign = Math.max(1, bulletBegin - prefixEnd)
-
 			for (; i < block.lineInfos.length - 1; i++)
 			{
 				const lineInfo = block.lineInfos[i + 1]
 
-				if (lineInfo .type === LineType.blank || lineInfo.type === LineType.bullet)
+				if (lineInfo.type === LineType.blank || lineInfo.type === LineType.bullet)
 					break
 
 				lineInfo.type = LineType.bullet
@@ -903,7 +888,6 @@ const languages: Record<string, LanguageData> = {
 // TODO: Handle multiple fetches at the same time
 // TODO: Multi-thread tests (and synchronize tests around disk access)
 // TODO: Add a test to ensure file names are unique for grammars
-// TODO: Try to split "prefix custom" out of prefix
 // TODO: Split indentation and custom whitespace
 // TODO: Change customPrefix slice to a lazy resolve
 // TODO: Better exporting from this file
