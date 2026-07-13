@@ -373,6 +373,7 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 					const end        = toPosition(endNode.endPosition)
 					const prevEnd    = startNode.previousSibling?.endPosition
 					const isTrailing = prevEnd?.row === start.line
+					if (!isTrailing) start.character = 0
 
 					blocks.push({
 						type:        BlockType.lineComment,
@@ -390,12 +391,14 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 				else
 				{
 					const node       = capture.node
+					const range      = toRange(node)
 					const isTrailing = node.startPosition.row === node.previousSibling?.endPosition.row
 					const isLeading  = node.endPosition.row === node.nextSibling?.startPosition.row
+					if (!isTrailing) range.start.character = 0
 
 					blocks.push({
 						type:        BlockType.blockComment,
-						range:       toRange(capture.node),
+						range:       range,
 						languageId:  ctx.languageId,
 						isLeading:   isLeading,
 						isTrailing:  isTrailing,
