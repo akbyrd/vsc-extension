@@ -189,6 +189,7 @@ type LineInfo = {
 type Block = {
 	type        : BlockType,
 	range       : Range,
+	rangeEx     : Range,
 	languageId  : string
 	isLeading   : boolean,
 	isTrailing  : boolean,
@@ -373,11 +374,13 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 					const end        = toPosition(endNode.endPosition)
 					const prevEnd    = startNode.previousSibling?.endPosition
 					const isTrailing = prevEnd?.row === start.line
+					const startEx    = isTrailing ? toPosition(prevEnd!) : start
 					if (!isTrailing) start.character = 0
 
 					blocks.push({
 						type:        BlockType.lineComment,
 						range:       new Range(start, end),
+						rangeEx:     new Range(startEx, end),
 						languageId:  ctx.languageId,
 						isLeading:   false,
 						isTrailing:  isTrailing,
@@ -391,14 +394,21 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 				else
 				{
 					const node       = capture.node
-					const range      = toRange(node)
-					const isTrailing = node.startPosition.row === node.previousSibling?.endPosition.row
-					const isLeading  = node.endPosition.row === node.nextSibling?.startPosition.row
-					if (!isTrailing) range.start.character = 0
+					const start      = toPosition(node.startPosition)
+					const end        = toPosition(node.endPosition)
+					const prevEnd    = node.previousSibling?.endPosition
+					const nextStart  = node.nextSibling?.startPosition
+					const isLeading  = nextStart?.row === end.line
+					const isTrailing = prevEnd?.row === start.line
+					const startEx    = isTrailing ? toPosition(prevEnd!)   : start
+					const endEx      = isLeading  ? toPosition(nextStart!) : end
+					if (!isTrailing) start.character = 0
+
 
 					blocks.push({
 						type:        BlockType.blockComment,
-						range:       range,
+						range:       new Range(start, end),
+						rangeEx:     new Range(startEx, endEx),
 						languageId:  ctx.languageId,
 						isLeading:   isLeading,
 						isTrailing:  isTrailing,
@@ -419,6 +429,7 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 			blocks.push({
 				type:        BlockType.prose,
 				range:       selection,
+				rangeEx:     selection,
 				languageId:  ctx.languageId,
 				isLeading:   false,
 				isTrailing:  false,
@@ -687,7 +698,7 @@ function analyzeBlock(ctx: Context, block: Block)
 	}
 }
 
-function wrapBlock(ctx: Context, block: Block): string
+function wrapBlock(ctx: Context, block: Block): WrapResult
 {
 	// NOTE: Whitespace and line prefixes are normalized. This means:
 	// * Converted to tabs or spaces based on editor settings
@@ -815,8 +826,9 @@ function wrapBlock(ctx: Context, block: Block): string
 		if (block.isLeading)  lines.push(indent)
 	}
 
-	const result = lines.join('\n')
-	return result
+	const text  = lines.join('\n')
+	const range = block.runCount > 1 ? block.rangeEx : block.range
+	return { text, range }
 }
 
 export async function wrapText(ctx: Context): Promise<WrapResult[]>
@@ -832,8 +844,8 @@ export async function wrapText(ctx: Context): Promise<WrapResult[]>
 	{
 		tokenizeBlock(ctx, block)
 		analyzeBlock(ctx, block)
-		const wrapped = wrapBlock(ctx, block)
-		results.push({ range: block.range, text: wrapped })
+		const result = wrapBlock(ctx, block)
+		results.push(result)
 	}
 	return results
 }

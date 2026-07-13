@@ -179,8 +179,8 @@ describe("line comments", () =>
 		it("with bullet, narrow 1",  () => test("0; // * asd asd",                 "0; // * asd asd",                                         { lineWidth: 0 }))
 		it("with bullet, narrow 2",  () => test("0; // * asd asd\n// * asd asd ",  "0; // * asd asd\n// * asd\n//   asd",                     { lineWidth: 0 }))
 		it("with doxygen, narrow 1", () => test("0; // @see asd asd",              "0; // @see asd asd",                                      { lineWidth: 0 }))
-		it("with doxygen, narrow 2", () => test("0; // @see asd asd @see asd asd", "0; \n// @see asd\n//      asd\n// @see asd\n//      asd", { lineWidth: 0 }))
-		it("with doxygen, narrow 3", () => test("0; // asd asd @see asd asd",      "0; \n// asd\n// asd\n// @see asd\n//      asd",           { lineWidth: 0 }))
+		it("with doxygen, narrow 2", () => test("0; // @see asd asd @see asd asd", "0;\n// @see asd\n//      asd\n// @see asd\n//      asd", { lineWidth: 0 }))
+		it("with doxygen, narrow 3", () => test("0; // asd asd @see asd asd",      "0;\n// asd\n// asd\n// @see asd\n//      asd",           { lineWidth: 0 }))
 	})
 
 	// Test multi line
@@ -387,10 +387,10 @@ describe("block comments", () =>
 		it("with prefix",             () => test("/** asd */ int x;",                      "/** asd */ int x;"))
 		it("with suffix",             () => test("/* asd **/ int x;",                      "/* asd **/ int x;"))
 		it("with bullet, narrow 1",   () => test("/* * asd asd */ int x;",                 "/* * asd asd */ int x;",                                               { lineWidth: 0 }))
-		it("with bullet, narrow 2",   () => test("/* * asd asd\n * * asd asd */ int x;",   "/*\n * * asd\n *   asd\n * * asd\n *   asd\n */\n int x;",             { lineWidth: 0 }))
+		it("with bullet, narrow 2",   () => test("/* * asd asd\n * * asd asd */ int x;",   "/*\n * * asd\n *   asd\n * * asd\n *   asd\n */\nint x;",             { lineWidth: 0 }))
 		it("with doxygen, narrow 1",  () => test("/* @see asd asd */ int x;",              "/* @see asd asd */ int x;",                                            { lineWidth: 0 }))
-		it("with doxygen, narrow 2",  () => test("/* @see asd asd @see asd asd */ int x;", "/*\n * @see asd\n *      asd\n * @see asd\n *      asd\n */\n int x;", { lineWidth: 0 }))
-		it("with doxygen, narrow 3",  () => test("/* asd asd @see asd asd */ int x;",      "/*\n * asd\n * asd\n * @see asd\n *      asd\n */\n int x;",           { lineWidth: 0 }))
+		it("with doxygen, narrow 2",  () => test("/* @see asd asd @see asd asd */ int x;", "/*\n * @see asd\n *      asd\n * @see asd\n *      asd\n */\nint x;", { lineWidth: 0 }))
+		it("with doxygen, narrow 3",  () => test("/* asd asd @see asd asd */ int x;",      "/*\n * asd\n * asd\n * @see asd\n *      asd\n */\nint x;",           { lineWidth: 0 }))
 	})
 
 	// Test trailing
@@ -403,10 +403,10 @@ describe("block comments", () =>
 		it("with prefix",            () => test("0; /** asd */",                      "0; /** asd */"))
 		it("with suffix",            () => test("0; /* asd **/",                      "0; /* asd **/"))
 		it("with bullet, narrow 1",  () => test("0; /* * asd asd */",                 "0; /* * asd asd */",                                               { lineWidth: 0 }))
-		it("with bullet, narrow 2",  () => test("0; /* * asd asd\n * * asd asd */",   "0; \n/*\n * * asd\n *   asd\n * * asd\n *   asd\n */",             { lineWidth: 0 }))
+		it("with bullet, narrow 2",  () => test("0; /* * asd asd\n * * asd asd */",   "0;\n/*\n * * asd\n *   asd\n * * asd\n *   asd\n */",             { lineWidth: 0 }))
 		it("with doxygen, narrow 1", () => test("0; /* @see asd asd */",              "0; /* @see asd asd */",                                            { lineWidth: 0 }))
-		it("with doxygen, narrow 2", () => test("0; /* @see asd asd @see asd asd */", "0; \n/*\n * @see asd\n *      asd\n * @see asd\n *      asd\n */", { lineWidth: 0 }))
-		it("with doxygen, narrow 3", () => test("0; /* asd asd @see asd asd */",      "0; \n/*\n * asd\n * asd\n * @see asd\n *      asd\n */",           { lineWidth: 0 }))
+		it("with doxygen, narrow 2", () => test("0; /* @see asd asd @see asd asd */", "0;\n/*\n * @see asd\n *      asd\n * @see asd\n *      asd\n */", { lineWidth: 0 }))
+		it("with doxygen, narrow 3", () => test("0; /* asd asd @see asd asd */",      "0;\n/*\n * asd\n * asd\n * @see asd\n *      asd\n */",           { lineWidth: 0 }))
 	})
 
 	// Test embedded
@@ -419,10 +419,10 @@ describe("block comments", () =>
 		it("with prefix",            () => test("foo(/** asd */ x);",                      "foo(/** asd */ x);"))
 		it("with suffix",            () => test("foo(/* asd **/ x);",                      "foo(/* asd **/ x);"))
 		it("with bullet, narrow 1",  () => test("foo(/* * asd asd */ x);",                 "foo(/* * asd asd */ x);",                                                 { lineWidth: 0 }))
-		it("with bullet, narrow 2",  () => test("foo(/* * asd asd\n * * asd asd */ x);",   "foo(\n/*\n * * asd\n *   asd\n * * asd\n *   asd\n */\n x);",             { lineWidth: 0 }))
+		it("with bullet, narrow 2",  () => test("foo(/* * asd asd\n * * asd asd */ x);",   "foo(\n/*\n * * asd\n *   asd\n * * asd\n *   asd\n */\nx);",             { lineWidth: 0 }))
 		it("with doxygen, narrow 1", () => test("foo(/* @see asd asd */ x);",              "foo(/* @see asd asd */ x);",                                              { lineWidth: 0 }))
-		it("with doxygen, narrow 2", () => test("foo(/* @see asd asd @see asd asd */ x);", "foo(\n/*\n * @see asd\n *      asd\n * @see asd\n *      asd\n */\n x);", { lineWidth: 0 }))
-		it("with doxygen, narrow 3", () => test("foo(/* asd asd @see asd asd */ x);",      "foo(\n/*\n * asd\n * asd\n * @see asd\n *      asd\n */\n x);",           { lineWidth: 0 }))
+		it("with doxygen, narrow 2", () => test("foo(/* @see asd asd @see asd asd */ x);", "foo(\n/*\n * @see asd\n *      asd\n * @see asd\n *      asd\n */\nx);", { lineWidth: 0 }))
+		it("with doxygen, narrow 3", () => test("foo(/* asd asd @see asd asd */ x);",      "foo(\n/*\n * asd\n * asd\n * @see asd\n *      asd\n */\nx);",           { lineWidth: 0 }))
 	})
 
 	// Test multi line
@@ -473,9 +473,9 @@ describe("block comments", () =>
 		it("with tail-space", () => test("/* asd \n * \n * asd \n */ ",   "/*\n * asd\n *\n * asd\n */ "))
 		it("with prefix",     () => test("/** asd\n ** \n ** asd\n */",   "/**\n ** asd\n **\n ** asd\n */"))
 		it("with suffix",     () => test("/* asd\n *\n * asd **/",        "/*\n * asd\n *\n * asd\n **/"))
-		it("with leading",    () => test("/* asd\n *\n * asd */ int x;",  "/*\n * asd\n *\n * asd\n */\n int x;"))
-		it("with trailing",   () => test("0; /* asd\n *\n * asd */",      "0; \n/*\n * asd\n *\n * asd\n */"))
-		it("with embedded",   () => test("foo(/* asd\n *\n * asd */ x)",  "foo(\n/*\n * asd\n *\n * asd\n */\n x)"))
+		it("with leading",    () => test("/* asd\n *\n * asd */ int x;",  "/*\n * asd\n *\n * asd\n */\nint x;"))
+		it("with trailing",   () => test("0; /* asd\n *\n * asd */",      "0;\n/*\n * asd\n *\n * asd\n */"))
+		it("with embedded",   () => test("foo(/* asd\n *\n * asd */ x)",  "foo(\n/*\n * asd\n *\n * asd\n */\nx)"))
 		it("with multiline",  () => test("/*\n * asd\n *\n * asd\n */",   "/*\n * asd\n *\n * asd\n */"))
 		it("with narrow",     () => test("/* asd asd\n *\n * asd asd */", "/*\n * asd\n * asd\n *\n * asd\n * asd\n */", { lineWidth: 0 }))
 	})
