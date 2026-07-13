@@ -699,18 +699,17 @@ function wrapBlock(ctx: Context, block: Block): string
 
 	const lines : string[] = []
 
-	const isSingleLine   = (block.isLeading || block.isTrailing) && (block.type === BlockType.lineComment || block.runCount === 1)
-	const firstLineWidth = isSingleLine ? Number.POSITIVE_INFINITY : ctx.lineWidth
-	const indent         = ctx.useSpaces ? " ".repeat(block.indentWidth) : "\t".repeat(block.indentWidth / ctx.tabWidth)
-	const p1             = block.prefixes[1]
-	const prefix         = " ".repeat(p1.align) + p1.chars
-	const leader         = `${indent}${prefix}`
+	const isSingleLine = (block.isLeading || block.isTrailing) && block.runCount === 1
+	const lineWidth    = isSingleLine ? Number.POSITIVE_INFINITY : ctx.lineWidth
+	const indent       = ctx.useSpaces ? " ".repeat(block.indentWidth) : "\t".repeat(block.indentWidth / ctx.tabWidth)
+	const p1           = block.prefixes[1]
+	const prefix       = " ".repeat(p1.align) + p1.chars
+	const leader       = `${indent}${prefix}`
 
 	var flushCount = 0
 	var bullet     = ""
 	var content    = ""
 	var isDoxygen  = false
-	var lineWidth  = firstLineWidth
 
 	function flush()
 	{
@@ -719,7 +718,6 @@ function wrapBlock(ctx: Context, block: Block): string
 			lines.push(`${leader}${bullet}${content}`)
 			content   = ""
 			isDoxygen = false
-			lineWidth = ctx.lineWidth
 		}
 	}
 
@@ -782,7 +780,7 @@ function wrapBlock(ctx: Context, block: Block): string
 				const suffix     = p2.chars
 				const contentLen = lines[0].length - leader.length
 				const totalLen   = indent.length + prefix.length + contentLen + 1 + suffix.length
-				const doesFit    = totalLen <= firstLineWidth
+				const doesFit    = totalLen <= lineWidth
 
 				if (doesFit)
 				{
