@@ -806,6 +806,12 @@ function wrapBlock(ctx: Context, block: Block): string
 		}
 	}
 
+	if (block.runCount > 1)
+	{
+		if (block.isTrailing) lines.splice(0, 0, "")
+		if (block.isLeading)  lines.push(indent)
+	}
+
 	const result = lines.join('\n')
 	return result
 }
