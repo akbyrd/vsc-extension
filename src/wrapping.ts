@@ -196,6 +196,7 @@ type Block = {
 	prefixes    : PrefixSet,
 	tokens      : Token[],
 	indentWidth : number,
+	runCount    : number,
 }
 
 function toPosition(p: ts.Point): Position
@@ -383,6 +384,7 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 						prefixes:    structuredClone(languageData.lineComment),
 						tokens:      [],
 						indentWidth: 0,
+						runCount:    0,
 					})
 				}
 				else
@@ -401,6 +403,7 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 						prefixes:    structuredClone(languageData.blockComment),
 						tokens:      [],
 						indentWidth: 0,
+						runCount:    0,
 					})
 				}
 			}
@@ -420,6 +423,7 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 				prefixes:    makePrefixSet(""),
 				tokens:      [],
 				indentWidth: 0,
+				runCount:    0,
 			})
 		}
 	}
@@ -606,7 +610,11 @@ function analyzeBlock(ctx: Context, block: Block)
 				if (doxygenLeaders.includes(firstChar))
 				{
 					doxygenRe.lastIndex = token.begin + 1
-					token.doxygen = !doxygenRe.exec(lineInfo.text)
+					if (!doxygenRe.exec(lineInfo.text))
+					{
+						token.doxygen = true
+						block.runCount += i > lineInfo.tokenBegin ? 1 : 0
+					}
 				}
 			}
 		}
@@ -669,6 +677,7 @@ function analyzeBlock(ctx: Context, block: Block)
 			{
 				runLength = 0
 				lastType = lineInfo.type
+				block.runCount += lineInfo.type === LineType.skip ? 0 : 1
 			}
 			lineInfo.runLength = runLength++
 		}
@@ -690,17 +699,18 @@ function wrapBlock(ctx: Context, block: Block): string
 
 	const lines : string[] = []
 
-	const lineWidth   = block.isLeading || block.isTrailing ? Number.POSITIVE_INFINITY : ctx.lineWidth
-	const indentWidth = block.indentWidth
-	const indent      = ctx.useSpaces ? " ".repeat(indentWidth) : "\t".repeat(indentWidth / ctx.tabWidth)
-	const p1          = block.prefixes[1]
-	const prefix      = " ".repeat(p1.align) + p1.chars
-	const leader      = `${indent}${prefix}`
+	const isSingleLine   = (block.isLeading || block.isTrailing) && (block.type === BlockType.lineComment || block.runCount === 1)
+	const firstLineWidth = isSingleLine ? Number.POSITIVE_INFINITY : ctx.lineWidth
+	const indent         = ctx.useSpaces ? " ".repeat(block.indentWidth) : "\t".repeat(block.indentWidth / ctx.tabWidth)
+	const p1             = block.prefixes[1]
+	const prefix         = " ".repeat(p1.align) + p1.chars
+	const leader         = `${indent}${prefix}`
 
 	var flushCount = 0
 	var bullet     = ""
 	var content    = ""
 	var isDoxygen  = false
+	var lineWidth  = firstLineWidth
 
 	function flush()
 	{
@@ -709,6 +719,7 @@ function wrapBlock(ctx: Context, block: Block): string
 			lines.push(`${leader}${bullet}${content}`)
 			content   = ""
 			isDoxygen = false
+			lineWidth = ctx.lineWidth
 		}
 	}
 
@@ -740,8 +751,7 @@ function wrapBlock(ctx: Context, block: Block): string
 				continue
 			}
 
-			const tokenLen = token.end - token.begin
-			const totalLen = leader.length + bullet.length + content.length + 1 + tokenLen
+			const totalLen = leader.length + bullet.length + content.length + 1 + tokenStr.length
 			const doesFit  = totalLen <= lineWidth
 			const overflow = content.length && !doesFit
 
@@ -772,7 +782,7 @@ function wrapBlock(ctx: Context, block: Block): string
 				const suffix     = p2.chars
 				const contentLen = lines[0].length - leader.length
 				const totalLen   = indent.length + prefix.length + contentLen + 1 + suffix.length
-				const doesFit    = totalLen <= lineWidth
+				const doesFit    = totalLen <= firstLineWidth
 
 				if (doesFit)
 				{
@@ -883,17 +893,18 @@ const languages: Record<string, LanguageData> = {
 	},
 }
 
+// TODO: Split indentation and custom whitespace
+// TODO: Change customPrefix slice to a lazy resolve
+// TODO: Better exporting from this file
+// TODO: Handle overlapping queries (due to character expand)
+
 // TODO: Empty comments should remove the line
 // TODO: Check for newer tree sitter module version
 // TODO: Handle multiple fetches at the same time
 // TODO: Multi-thread tests (and synchronize tests around disk access)
 // TODO: Add a test to ensure file names are unique for grammars
-// TODO: Split indentation and custom whitespace
-// TODO: Change customPrefix slice to a lazy resolve
-// TODO: Better exporting from this file
 // TODO: Have AI implement from scratch and compare
 // TODO: Reimplement in zed and compare
-// TODO: Handle overlapping queries (due to character expand)
 // TODO: Improve plaintext support
 // TODO: Figure out how to handle code in markdown / other embedded languages
 
