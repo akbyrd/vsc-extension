@@ -802,33 +802,21 @@ function wrapBlock(ctx: Context, block: Block): WrapResult
 		}
 	}
 
-	// TODO: If we always go to the end of the line:
-	// * Pro: The start and end position logic becomes symmetric
-	// * Pro: It would remove trailing whitespace
-	// * Pro: Comments at the end of a file would ensure a trailing newline
-	// * Con: Changes all tests
-	//
-	// if (!isLeading) lines.push("")
-	// if (lines.length > 2)
-
 	// TODO: If we always go to adjacent code:
 	// * Pro: The start and end position logic becomes simpler
 	// * Pro: We could normalize whitespace
 	// * Con: We have to do more work to deal with whitespace
 
-	const start = block.range.start
-	const end   = block.range.end
+	// Extend the range to normalize adjacent whitespace
+	if (!isTrailing || lines.length !== 1) block.range.start.character = block.minChar
+	if (!isLeading  || lines.length !== 1) block.range.end.character   = block.maxChar
 
-	if (!isTrailing) start.character = 0
-	if (isTrailing && lines.length !== 1) start.character = block.minChar
-	if (!isLeading && lines.length === 0) end.character = Number.POSITIVE_INFINITY
-	if (isLeading && lines.length !== 1) end.character = block.maxChar
+	// Push multi-line comments onto separate lines
+	if (isTrailing && lines.length > 1) lines.splice(0, 0, "")
+	if (isLeading  && lines.length > 1) lines.push(indent)
 
-	if (lines.length > 1)
-	{
-		if (isTrailing) lines.splice(0, 0, "")
-		if (isLeading)  lines.push(indent)
-	}
+	// Always emit a final newline
+	if (!isLeading) lines.push("")
 
 	const text = lines.join('\n')
 	return { text, range: block.range }
@@ -926,8 +914,7 @@ const languages: Record<string, LanguageData> = {
 // TODO: Multi-thread tests (and synchronize tests around disk access)
 // TODO: Add a test to ensure file names are unique for grammars
 // TODO: Have AI implement from scratch and compare
-// TODO: Reimplement in zed and compare
-// TODO: Improve plaintext support
+// TODO: Implement plaintext support
 // TODO: Figure out how to handle code in markdown / other embedded languages
 
 // Spec
