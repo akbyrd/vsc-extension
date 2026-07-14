@@ -819,37 +819,6 @@ function wrapBlock(ctx: Context, block: Block): WrapResult
 	const start = block.range.start
 	const end   = block.range.end
 
-	/*
-	switch (lines.length)
-	{
-		case 0:
-		{
-			start.character = isTrailing ? prevEnd!.column   : 0
-			end.character   = isLeading  ? nextStart!.column : Number.POSITIVE_INFINITY
-			break
-		}
-
-		case 1:
-		{
-			if (!isTrailing) start.character = 0
-			break
-		}
-
-		default:
-		{
-			start.character = isTrailing ? prevEnd!.column   : 0
-			end.character   = isLeading  ? nextStart!.column : endPos.column
-
-			if (isTrailing) lines.splice(0, 0, "")
-			if (isLeading)  lines.push(indent)
-			break
-		}
-	}
-	//*/
-
-
-
-	//*
 	if (!isTrailing) start.character = 0
 	if (isTrailing && lines.length !== 1) start.character = block.minChar
 	if (!isLeading && lines.length === 0) end.character = Number.POSITIVE_INFINITY
@@ -860,57 +829,6 @@ function wrapBlock(ctx: Context, block: Block): WrapResult
 		if (isTrailing) lines.splice(0, 0, "")
 		if (isLeading)  lines.push(indent)
 	}
-	//*/
-
-
-
-	/*
-	start.character = isTrailing && lines.length !== 1 ? prevEnd!.column
-		: isTrailing ? startPos.column : 0
-
-	end.character = isLeading && lines.length !== 1 ? nextStart!.column
-		: lines.length !== 0 ? endPos.column : Number.POSITIVE_INFINITY
-
-	if (lines.length > 1)
-	{
-		if (isTrailing) lines.splice(0, 0, "")
-		if (isLeading)  lines.push(indent)
-	}
-	//*/
-
-
-
-	/*
-	start.character = isTrailing
-		? lines.length !== 1 ? prevEnd!.column : startPos.column
-		: 0
-
-	end.character = isLeading
-		? lines.length !== 1 ? nextStart!.column : endPos.column
-		: Number.POSITIVE_INFINITY
-
-	if (lines.length > 1)
-	{
-		if (isTrailing) lines.splice(0, 0, "")
-		if (isLeading)  lines.push(indent)
-	}
-	//*/
-
-
-
-	/*
-	const minCol = isTrailing ? prevEnd!.column : 0
-	if (!isTrailing || lines.length !== 1) start.character = minCol
-
-	const maxCol = isLeading ? nextStart!.column : Number.POSITIVE_INFINITY
-	if (lines.length === 0 || isLeading && lines.length > 1) end.character = maxCol
-
-	if (lines.length > 1)
-	{
-		if (isTrailing) lines.splice(0, 0, "")
-		if (isLeading)  lines.push(indent)
-	}
-	//*/
 
 	const text = lines.join('\n')
 	return { text, range: block.range }
