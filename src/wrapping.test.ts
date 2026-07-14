@@ -74,9 +74,16 @@ async function wrap(s: string, override?: Partial<Context>): Promise<string>
 
 	for (const result of results.reverse())
 	{
-		const begin = newLines[result.range.start.line] + result.range.start.character
-		const end   = newLines[result.range.end.line]   + result.range.end.character
-		s = s.slice(0, begin) + result.text + s.slice(end)
+		const start = result.range.start
+		const end   = result.range.end
+		const inf   = Number.POSITIVE_INFINITY
+
+		const startChar = start.character === inf ? (newLines[start.line + 1] - 1 ?? s.length) - newLines[start.line] : start.character
+		const endChar   = end  .character === inf ? (newLines[end  .line + 1] - 0 ?? s.length) - newLines[end  .line] : end  .character
+
+		const iBegin = newLines[start.line] + startChar
+		const iEnd   = newLines[end.line]   + endChar
+		s = s.slice(0, iBegin) + result.text + s.slice(iEnd)
 	}
 	return s
 }
@@ -294,11 +301,17 @@ describe("line comments", () =>
 	describe("empty", () =>
 	{
 		it("1",               () => test("//",          ""))
+		it("2",               () => test("0;\n//",      "0;\n"))
+		it("3",               () => test("//\n0;",      "0;"))
+		it("4",               () => test("0;\n//\n1;",  "0;\n1;"))
+		it("5",               () => test("//\n\t0;",    "\t0;"))
+		it("6",               () => test("//\n\n0;",    "\n0;"))
+		it("7",               () => test("0;\n\n//",    "0;\n\n"))
 		it("with indent",     () => test("\t//\n\t//",  ""))
 		it("with head-space", () => test("// ",         ""))
 		it("with tail-space", () => test("// ",         ""))
 		it("with prefix",     () => test("///",         ""))
-		it("with trailing",   () => test("0; //",       "0; "))
+		it("with trailing",   () => test("0; //",       "0;"))
 		it("with multiline",  () => test("//\n//",      ""))
 		it("with narrow",     () => test("//",          "", { lineWidth: 0 }))
 		it("with bullet 1",   () => test("// *",        ""))
@@ -553,6 +566,13 @@ describe("block comments", () =>
 	{
 		it("1",               () => test("/* */",          ""))
 		it("2",               () => test("/*\n*/",         ""))
+		it("3",               () => test("0;\n/* */",      "0;\n"))
+		it("4",               () => test("/* */\n0;",      "0;"))
+		it("5",               () => test("0;\n/* */\n1;",  "0;\n1;"))
+		it("6",               () => test("0;\n/*\n*/\n1;", "0;\n1;"))
+		it("7",               () => test("/* */\n\t0;",    "\t0;"))
+		it("8",               () => test("/* */\n\n0;",    "\n0;"))
+		it("9",               () => test("0;\n\n/* */",    "0;\n\n"))
 		it("with indent",     () => test("\t/* */",        ""))
 		it("with head-space", () => test("/**/",           ""))
 		it("with tail-space", () => test("/**/",           ""))
@@ -562,9 +582,9 @@ describe("block comments", () =>
 		it("with suffix 1",   () => test("/* **/",         ""))
 		it("with suffix 2",   () => test("/*\n**/",        ""))
 		it("with leading 1",  () => test("/**//**/",       ""))
-		it("with leading 2",  () => test("/* */ int x;",   " int x;"))
-		it("with trailing",   () => test("0; /* */",       "0; "))
-		it("with embedded",   () => test("foo(/* */ x)",   "foo( x)"))
+		it("with leading 2",  () => test("/* */ int x;",   "int x;"))
+		it("with trailing",   () => test("0; /* */",       "0;"))
+		it("with embedded",   () => test("foo(/* */ x)",   "foo(x)"))
 		it("with multiline",  () => test("/*\n */",        ""))
 		it("with narrow",     () => test("/* */",          "", { lineWidth: 0 }))
 		it("with bullet 1",   () => test("/* * */",        ""))

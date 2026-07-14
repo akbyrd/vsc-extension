@@ -188,11 +188,10 @@ type LineInfo = {
 
 type Block = {
 	type        : BlockType,
-	range       : Range,
-	rangeEx     : Range,
+	range       : Range
+	minChar     : number
+	maxChar     : number
 	languageId  : string
-	isLeading   : boolean,
-	isTrailing  : boolean,
 	lineInfos   : LineInfo[],
 	prefixes    : PrefixSet,
 	tokens      : Token[],
@@ -203,13 +202,6 @@ type Block = {
 function toPosition(p: ts.Point): Position
 {
 	return new Position(p.row, p.column)
-}
-
-function toRange(n: ts.Node): Range
-{
-	const start = toPosition(n.startPosition)
-	const end   = toPosition(n.endPosition)
-	return new Range(start, end)
 }
 
 function toPoint(p: Position): ts.Point
@@ -370,20 +362,16 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 						break
 					}
 
-					const start      = toPosition(startNode.startPosition)
-					const end        = toPosition(endNode.endPosition)
-					const prevEnd    = startNode.previousSibling?.endPosition
-					const isTrailing = prevEnd?.row === start.line
-					const startEx    = isTrailing ? toPosition(prevEnd!) : start
-					if (!isTrailing) start.character = 0
+					const isTrailing = startNode.previousSibling?.endPosition.row === startNode.startPosition.row
+					const minChar    = isTrailing ? startNode.previousSibling!.endPosition.column : 0
+					const maxChar    = Number.POSITIVE_INFINITY
 
 					blocks.push({
 						type:        BlockType.lineComment,
-						range:       new Range(start, end),
-						rangeEx:     new Range(startEx, end),
+						range:       new Range(toPosition(startNode.startPosition), toPosition(endNode.endPosition)),
+						minChar:     minChar,
+						maxChar:     maxChar,
 						languageId:  ctx.languageId,
-						isLeading:   false,
-						isTrailing:  isTrailing,
 						lineInfos:   [],
 						prefixes:    structuredClone(languageData.lineComment),
 						tokens:      [],
@@ -394,24 +382,17 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 				else
 				{
 					const node       = capture.node
-					const start      = toPosition(node.startPosition)
-					const end        = toPosition(node.endPosition)
-					const prevEnd    = node.previousSibling?.endPosition
-					const nextStart  = node.nextSibling?.startPosition
-					const isLeading  = nextStart?.row === end.line
-					const isTrailing = prevEnd?.row === start.line
-					const startEx    = isTrailing ? toPosition(prevEnd!)   : start
-					const endEx      = isLeading  ? toPosition(nextStart!) : end
-					if (!isTrailing) start.character = 0
-
+					const isLeading  = node.nextSibling?.startPosition?.row === node.endPosition.row
+					const isTrailing = node.previousSibling?.endPosition?.row === node.startPosition.row
+					const minChar    = isTrailing ? node.previousSibling.endPosition.column : 0
+					const maxChar    = isLeading  ? node.nextSibling.startPosition.column   : Number.POSITIVE_INFINITY
 
 					blocks.push({
 						type:        BlockType.blockComment,
-						range:       new Range(start, end),
-						rangeEx:     new Range(startEx, endEx),
+						range:       new Range(toPosition(node.startPosition), toPosition(node.endPosition)),
+						minChar:     minChar,
+						maxChar:     maxChar,
 						languageId:  ctx.languageId,
-						isLeading:   isLeading,
-						isTrailing:  isTrailing,
 						lineInfos:   [],
 						prefixes:    structuredClone(languageData.blockComment),
 						tokens:      [],
@@ -429,10 +410,9 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 			blocks.push({
 				type:        BlockType.prose,
 				range:       selection,
-				rangeEx:     selection,
+				minChar:     0,
+				maxChar:     Number.POSITIVE_INFINITY,
 				languageId:  ctx.languageId,
-				isLeading:   false,
-				isTrailing:  false,
 				lineInfos:   [],
 				prefixes:    makePrefixSet(""),
 				tokens:      [],
@@ -713,7 +693,9 @@ function wrapBlock(ctx: Context, block: Block): WrapResult
 
 	const lines : string[] = []
 
-	const isSingleLine = (block.isLeading || block.isTrailing) && block.runCount === 1
+	const isTrailing   = block.minChar > 0
+	const isLeading    = block.maxChar < Number.POSITIVE_INFINITY
+	const isSingleLine = (isLeading || isTrailing) && block.runCount === 1
 	const lineWidth    = isSingleLine ? Number.POSITIVE_INFINITY : ctx.lineWidth
 	const indent       = ctx.useSpaces ? " ".repeat(block.indentWidth) : "\t".repeat(block.indentWidth / ctx.tabWidth)
 	const p1           = block.prefixes[1]
@@ -820,15 +802,118 @@ function wrapBlock(ctx: Context, block: Block): WrapResult
 		}
 	}
 
-	if (block.runCount > 1)
-	{
-		if (block.isTrailing) lines.splice(0, 0, "")
-		if (block.isLeading)  lines.push(indent)
-	}
+	// TODO: If we always go to the end of the line:
+	// * Pro: The start and end position logic becomes symmetric
+	// * Pro: It would remove trailing whitespace
+	// * Pro: Comments at the end of a file would ensure a trailing newline
+	// * Con: Changes all tests
+	//
+	// if (!isLeading) lines.push("")
+	// if (lines.length > 2)
 
-	const text  = lines.join('\n')
-	const range = block.runCount > 1 ? block.rangeEx : block.range
-	return { text, range }
+	// TODO: If we always go to adjacent code:
+	// * Pro: The start and end position logic becomes simpler
+	// * Pro: We could normalize whitespace
+	// * Con: We have to do more work to deal with whitespace
+
+	const start = block.range.start
+	const end   = block.range.end
+
+	/*
+	switch (lines.length)
+	{
+		case 0:
+		{
+			start.character = isTrailing ? prevEnd!.column   : 0
+			end.character   = isLeading  ? nextStart!.column : Number.POSITIVE_INFINITY
+			break
+		}
+
+		case 1:
+		{
+			if (!isTrailing) start.character = 0
+			break
+		}
+
+		default:
+		{
+			start.character = isTrailing ? prevEnd!.column   : 0
+			end.character   = isLeading  ? nextStart!.column : endPos.column
+
+			if (isTrailing) lines.splice(0, 0, "")
+			if (isLeading)  lines.push(indent)
+			break
+		}
+	}
+	//*/
+
+
+
+	//*
+	if (!isTrailing) start.character = 0
+	if (isTrailing && lines.length !== 1) start.character = block.minChar
+	if (!isLeading && lines.length === 0) end.character = Number.POSITIVE_INFINITY
+	if (isLeading && lines.length !== 1) end.character = block.maxChar
+
+	if (lines.length > 1)
+	{
+		if (isTrailing) lines.splice(0, 0, "")
+		if (isLeading)  lines.push(indent)
+	}
+	//*/
+
+
+
+	/*
+	start.character = isTrailing && lines.length !== 1 ? prevEnd!.column
+		: isTrailing ? startPos.column : 0
+
+	end.character = isLeading && lines.length !== 1 ? nextStart!.column
+		: lines.length !== 0 ? endPos.column : Number.POSITIVE_INFINITY
+
+	if (lines.length > 1)
+	{
+		if (isTrailing) lines.splice(0, 0, "")
+		if (isLeading)  lines.push(indent)
+	}
+	//*/
+
+
+
+	/*
+	start.character = isTrailing
+		? lines.length !== 1 ? prevEnd!.column : startPos.column
+		: 0
+
+	end.character = isLeading
+		? lines.length !== 1 ? nextStart!.column : endPos.column
+		: Number.POSITIVE_INFINITY
+
+	if (lines.length > 1)
+	{
+		if (isTrailing) lines.splice(0, 0, "")
+		if (isLeading)  lines.push(indent)
+	}
+	//*/
+
+
+
+	/*
+	const minCol = isTrailing ? prevEnd!.column : 0
+	if (!isTrailing || lines.length !== 1) start.character = minCol
+
+	const maxCol = isLeading ? nextStart!.column : Number.POSITIVE_INFINITY
+	if (lines.length === 0 || isLeading && lines.length > 1) end.character = maxCol
+
+	if (lines.length > 1)
+	{
+		if (isTrailing) lines.splice(0, 0, "")
+		if (isLeading)  lines.push(indent)
+	}
+	//*/
+
+	const text = lines.join('\n')
+	return { text, range: block.range }
 }
 
 export async function wrapText(ctx: Context): Promise<WrapResult[]>
@@ -917,7 +1002,6 @@ const languages: Record<string, LanguageData> = {
 // TODO: Better exporting from this file
 // TODO: Handle overlapping queries (due to character expand)
 
-// TODO: Empty comments should remove the line
 // TODO: Check for newer tree sitter module version
 // TODO: Handle multiple fetches at the same time
 // TODO: Multi-thread tests (and synchronize tests around disk access)
