@@ -915,6 +915,7 @@ const languages: Record<string, LanguageData> = {
 	},
 }
 
+// TODO: I don't think bullet + doxygen will be handled correctly
 // TODO: Split indentation and custom whitespace
 // TODO: Change customPrefix slice to a lazy resolve
 // TODO: Better exporting from this file

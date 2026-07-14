@@ -1,14 +1,3 @@
-To Do
------
-TODO: I don't think bullet + doxygen will be handled correctly
-TODO: Don't count "describe" in the failed test count
-TODO: Enable more linting
-TODO: Delay error lens visuals
-TODO: Keybindings for tests { test, test debug } x { failed, line, file, project, solution }
-TODO: Custom test reporter
-
-
-
 Tree Sitter
 -----------
 https://github.com/tree-sitter

@@ -74,6 +74,7 @@ async function wrap(s: string, override?: Partial<Context>): Promise<string>
 
 	for (const result of results.reverse())
 	{
+		// TODO: Try to clean this up
 		const start = result.range.start
 		const end   = result.range.end
 		const inf   = Number.POSITIVE_INFINITY

@@ -7,7 +7,7 @@
 			"problemMatcher": "$tsc-watch",
 			"isBackground": true,
 			"presentation": {
-				"reveal": "silent"
+				//"reveal": "silent"
 			},
 			"group": {
 				"kind": "build",
