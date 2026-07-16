@@ -50,6 +50,11 @@ async function doWrap(s: string, override?: Partial<wrap.Context>): Promise<stri
 		await fs.writeFile(filePath, data)
 	}
 
+	function toString(r: wrap.Range)
+	{
+		return `[${r.start.line}:${r.start.character}, ${r.end.line}:${r.end.character})`
+	}
+
 	const languageId = "cpp"
 	const begin      = new wrap.Position(0, 0)
 	const end        = new wrap.Position(newLines.length - 2, newLines.at(-1))
@@ -72,6 +77,17 @@ async function doWrap(s: string, override?: Partial<wrap.Context>): Promise<stri
 
 	const results = await wrap.wrap(ctx)
 
+	for (var i = results.length - 1; i >= 1; --i)
+	{
+		const curr     = results[i - 0].range
+		const prev     = results[i - 1].range
+		const order    = curr.start.compareTo(prev.end)
+		const overlaps = order < 0
+
+		if (overlaps)
+			throw new Error(`ranges overlap:\n\t${i - 1}: ${toString(prev)}\n\t${i}: ${toString(curr)}`)
+	}
+
 	for (const result of results.reverse())
 	{
 		// TODO: Try to clean this up
@@ -92,10 +108,9 @@ async function doWrap(s: string, override?: Partial<wrap.Context>): Promise<stri
 
 async function test(original: string, expected: string, override?: Partial<wrap.Context>)
 {
-	const actual = await doWrap(original, override)
-
 	try
 	{
+		const actual = await doWrap(original, override)
 		assert.deepEqual(actual, expected)
 	}
 	catch (e)
@@ -321,6 +336,13 @@ describe("line comments", () =>
 		it("with bullet 3",   () => test("//\n// * ",   ""))
 		it("with newline",    () => test("//\n//\n//",  ""))
 		it("with doxygen",    () => test("// @endcode", "// @endcode\n"))
+	})
+
+	describe("misc", () =>
+	{
+		const s0 = new wrap.Range(new wrap.Position(0, 0), new wrap.Position(0, 1))
+		const s1 = new wrap.Range(new wrap.Position(0, 2), new wrap.Position(0, 3))
+		it("overlapping selection", () => test("// asd", "// asd\n", { selections: [ s0, s1 ] }))
 	})
 })
 
@@ -593,5 +615,12 @@ describe("block comments", () =>
 		it("with bullet 2",   () => test("/*\n * */",      ""))
 		it("with newline",    () => test("/*\n *\n */",    ""))
 		it("with doxygen",    () => test("/* @endcode */", "/* @endcode */\n"))
+	})
+
+	describe("misc", () =>
+	{
+		const s0 = new wrap.Range(new wrap.Position(0, 0), new wrap.Position(0, 1))
+		const s1 = new wrap.Range(new wrap.Position(0, 2), new wrap.Position(0, 3))
+		it("overlapping selection", () => test("/* asd */", "/* asd */\n", { selections: [ s0, s1 ] }))
 	})
 })

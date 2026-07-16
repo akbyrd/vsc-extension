@@ -299,17 +299,24 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 			// that go past the end of the line. But vscode throws for positions before the
 			// beginning of the line (i.e. negative values).
 
-			const start : Position = new Position(selection.start.line, Math.max(selection.start.character - 1, 0))
-			const end   : Position = new Position(selection.end.line,   selection.end.character + 1)
-
-			const options  : ts.QueryOptions   = { startPosition: toPoint(start), endPosition: toPoint(end) }
+			const start    : ts.Point          = { row: selection.start.line, column: Math.max(selection.start.character - 1, 0) }
+			const end      : ts.Point          = { row: selection.end.line,   column: selection.end.character + 1 }
+			const options  : ts.QueryOptions   = { startPosition: start, endPosition: end }
 			const captures : ts.QueryCapture[] = parse.query.captures(parse.tree.rootNode, options)
 
 			for (const capture of captures)
 			{
-				const text        : string  = capture.node.text
-				const lineComment : string  = languageData.lineComment[0].chars
-				const isLine      : boolean = !!lineComment && text.startsWith(lineComment)
+				const text        = capture.node.text
+				const lineComment = languageData.lineComment[0].chars
+				const isLine      = !!lineComment && text.startsWith(lineComment)
+
+				// NOTE: A few cases where this can happen:
+				// * Multiple selections may exist in the same comment.
+				// * The character expand may create the above scenario.
+				// * The previous block (if it was a line comment) may have extended downward to include this one.
+				const startPos  = toPosition(capture.node.startPosition)
+				const isHandled = blocks.at(-1)?.range.end.isAfter(startPos)
+				if (isHandled) continue
 
 				if (isLine)
 				{
@@ -319,18 +326,6 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 
 					var startNode : ts.Node = capture.node
 					var endNode   : ts.Node = capture.node
-
-					// TODO: Skip if already part of previous block
-					// Can't check single node, because previous may have walked multiple trailing nodes
-
-					// TODO: Should we naively fill blocks, then prune duplicates/overlaps?
-					// Con: Will check block types that can't actually overlap
-
-					// NOTE: The previous block (if it was a line comment) may have extended downward
-					// to include this one.
-					const startPos  = toPosition(startNode.startPosition)
-					const isHandled = blocks.at(-1)?.range.end.isAfter(startPos)
-					if (isHandled) continue
 
 					while (true)
 					{
@@ -901,12 +896,10 @@ const languages: Record<string, LanguageData> = {
 	},
 }
 
-// TODO: Handle overlapping queries (due to character expand)
 // TODO: Check for newer tree sitter module version
 // TODO: Handle multiple fetches at the same time
 // TODO: Multi-thread tests (and synchronize tests around disk access)
 // TODO: Add a test to ensure file names are unique for grammars
-// TODO: Have AI implement from scratch and compare
 // TODO: Implement plaintext support
 // TODO: Figure out how to handle code in markdown / other embedded languages
 
