@@ -10,6 +10,10 @@ class Cache
 
 	async fetch(url: string, storage: Storage): Promise<Uint8Array>
 	{
+		// NOTE: We can have multiple fetch requests to the same URL in progress at the same time.
+		// This is wasteful, but the caching remains correct. It's an uncommon edge case that I'm not
+		// worried about at the moment to leaving the behavior as-is.
+
 		// Check the memory cache first
 		const memCached = this.db.fetch.get(url)
 		if (memCached) return memCached
@@ -896,7 +900,6 @@ export const languages: Record<string, LanguageData> = {
 }
 
 // TODO: Check for newer tree sitter module version
-// TODO: Handle multiple fetches at the same time
 // TODO: Implement plaintext support
 // TODO: Figure out how to handle code in markdown / other embedded languages
 

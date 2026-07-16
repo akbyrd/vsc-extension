@@ -334,7 +334,13 @@ async function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditor
 		}
 	}
 
+	const version = textEditor.document.version
 	const results = await wrap.wrap(ctx)
+	if (textEditor.document.version !== version)
+	{
+		onError(new Error("document changed while wrapping"))
+		return
+	}
 
 	function apply(e: vscode.TextEditorEdit)
 	{
@@ -348,7 +354,9 @@ async function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditor
 		}
 	}
 
-	await textEditor.edit(apply)
+	const applied = await textEditor.edit(apply)
+	if (!applied)
+		onError(new Error("failed to apply edits"))
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
