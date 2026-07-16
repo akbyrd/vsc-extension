@@ -282,11 +282,12 @@ async function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditor
 	// NOTE: Edits must be synchronous. Since we await a file download/load, parser initialization,
 	// and parser load we can't use the synchronous edit that is passed in. Instead, we
 
-	function onError(s: string)
+	function onError(e: Error)
 	{
+		const s = String(e)
 		console.log(s)
 		symbolNav.statusBarMessage?.dispose()
-		symbolNav.statusBarMessage = vscode.window.setStatusBarMessage(`Failed to wrap: ${s}`, 3000)
+		symbolNav.statusBarMessage = vscode.window.setStatusBarMessage(s, 3000)
 	}
 
 	async function readFile(key: string): Promise<Uint8Array|undefined>

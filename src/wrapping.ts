@@ -24,14 +24,16 @@ class Cache
 			return diskCached
 		}
 
-		// TODO: Should this have a try/catch?
-
 		// Download if not cached
 		const response = await fetch(url)
 		const bytes    = await response.bytes()
+		if (!response.ok)
+			throw new Error(`fetch failed: ${response.status} - ${response.statusText}`)
 
-		// Cache the result in memory and on disk
-		await storage.write(key, bytes)
+		// Cache the result on disk (it's ok if this fails)
+		try { await storage.write(key, bytes) } catch {}
+
+		// Cache the result in memory
 		this.db.fetch.set(url, bytes)
 		return bytes
 	}
@@ -110,7 +112,7 @@ export type Context = {
 	selections : readonly Range[],
 	getText    : () => string,
 	getLine    : (i: number) => TextLine,
-	onError    : (s: string) => void,
+	onError    : (e: Error) => void,
 	storage    : Storage,
 }
 
@@ -204,11 +206,6 @@ function toPosition(p: ts.Point): Position
 	return new Position(p.row, p.column)
 }
 
-function toPoint(p: Position): ts.Point
-{
-	return { row: p.line, column: p.character }
-}
-
 function consumeIndent(s: string, begin: number, width: number, tabSize: number)
 {
 	const space = ' '.charCodeAt(0)
@@ -248,19 +245,12 @@ async function parseDocument(ctx: Context): Promise<Parse|undefined>
 	const languageData = languages[ctx.languageId]
 	if (languageData)
 	{
-		try
-		{
-			const parser = await cache.parser(languageData.grammar, ctx.storage)
-			const text   = ctx.getText()
-			const tree   = parser.ts.parse(text)!
-			console.assert(tree)
+		const parser = await cache.parser(languageData.grammar, ctx.storage)
+		const text   = ctx.getText()
+		const tree   = parser.ts.parse(text)
+		if (!tree) throw new Error("failed to parse")
 
-			return { parser: parser.ts, query: parser.query, tree }
-		}
-		catch (e)
-		{
-			ctx.onError(`Failed to parse: ${String(e)}`)
-		}
+		return { parser: parser.ts, query: parser.query, tree }
 	}
 
 	return undefined
@@ -820,18 +810,27 @@ export async function wrap(ctx: Context): Promise<Result[]>
 	console.assert(ctx.tabWidth > 0)
 	console.assert(ctx.lineWidth >= 0)
 
-	const parse  = await parseDocument(ctx)
-	const blocks = gatherBlocks(ctx, parse)
-
-	const results: Result[] = []
-	for (const block of blocks)
+	try
 	{
-		tokenizeBlock(ctx, block)
-		analyzeBlock(ctx, block)
-		const result = wrapBlock(ctx, block)
-		results.push(result)
+		const results: Result[] = []
+		const parse  = await parseDocument(ctx)
+		const blocks = gatherBlocks(ctx, parse)
+
+		for (const block of blocks)
+		{
+			tokenizeBlock(ctx, block)
+			analyzeBlock(ctx, block)
+			const result = wrapBlock(ctx, block)
+			results.push(result)
+		}
+		return results
 	}
-	return results
+	catch (e)
+	{
+		ctx.onError(e as Error)
+	}
+
+	return []
 }
 
 const cache = new Cache()
@@ -898,7 +897,6 @@ const languages: Record<string, LanguageData> = {
 
 // TODO: Check for newer tree sitter module version
 // TODO: Handle multiple fetches at the same time
-// TODO: Multi-thread tests (and synchronize tests around disk access)
 // TODO: Add a test to ensure file names are unique for grammars
 // TODO: Implement plaintext support
 // TODO: Figure out how to handle code in markdown / other embedded languages
