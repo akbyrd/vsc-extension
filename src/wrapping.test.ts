@@ -2,9 +2,9 @@ import { describe, it } from "node:test"
 import assert from "node:assert/strict"
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
-import { Position, Range, TextLine, Context, wrapText } from "./wrapping.js"
+import * as wrap from "./wrapping.js"
 
-async function wrap(s: string, override?: Partial<Context>): Promise<string>
+async function doWrap(s: string, override?: Partial<wrap.Context>): Promise<string>
 {
 	const newLines : number[] = [ 0 ]
 	for (var iChar = 0; iChar < s.length; ++iChar)
@@ -15,18 +15,18 @@ async function wrap(s: string, override?: Partial<Context>): Promise<string>
 	}
 	newLines.push(s.length + 1)
 
-	function getLine(iLine: number): TextLine
+	function getLine(iLine: number): wrap.TextLine
 	{
 		console.assert(iLine < newLines.length)
 
 		const iBegin = newLines[iLine + 0]
 		const iEnd   = newLines[iLine + 1]
 		const text   = s.slice(iBegin, iEnd - 1)
-		const begin  = new Position(iLine, 0)
-		const end    = new Position(iLine, text.length)
-		const range  = new Range(begin, end)
+		const begin  = new wrap.Position(iLine, 0)
+		const end    = new wrap.Position(iLine, text.length)
+		const range  = new wrap.Range(begin, end)
 
-		const line : TextLine = { text, range }
+		const line : wrap.TextLine = { text, range }
 		return line
 	}
 
@@ -51,11 +51,11 @@ async function wrap(s: string, override?: Partial<Context>): Promise<string>
 	}
 
 	const languageId = "cpp"
-	const begin      = new Position(0, 0)
-	const end        = new Position(newLines.length - 2, newLines.at(-1))
-	const selection  = new Range(begin, end)
+	const begin      = new wrap.Position(0, 0)
+	const end        = new wrap.Position(newLines.length - 2, newLines.at(-1))
+	const selection  = new wrap.Range(begin, end)
 
-	const ctx : Context = {
+	const ctx : wrap.Context = {
 		tabWidth   : override?.tabWidth ?? 4,
 		useSpaces  : override?.useSpaces ?? false,
 		lineWidth  : override?.lineWidth ?? 60,
@@ -70,7 +70,7 @@ async function wrap(s: string, override?: Partial<Context>): Promise<string>
 		},
 	}
 
-	const results = await wrapText(ctx)
+	const results = await wrap.wrap(ctx)
 
 	for (const result of results.reverse())
 	{
@@ -90,9 +90,9 @@ async function wrap(s: string, override?: Partial<Context>): Promise<string>
 	return s
 }
 
-async function test(original: string, expected: string, override?: Partial<Context>)
+async function test(original: string, expected: string, override?: Partial<wrap.Context>)
 {
-	const actual = await wrap(original, override)
+	const actual = await doWrap(original, override)
 
 	try
 	{

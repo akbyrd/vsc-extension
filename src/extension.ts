@@ -1,5 +1,5 @@
 import * as vscode from "vscode"
-import {wrapText, Context} from "./wrapping.js"
+import * as wrap from "./wrapping.js"
 
 export function activate(context: vscode.ExtensionContext)
 {
@@ -318,7 +318,7 @@ async function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditor
 		.filter(r => r > 0)
 		.reduce((p, c) => Math.min(p, c), Number.POSITIVE_INFINITY)
 
-	const ctx : Context = {
+	const ctx : wrap.Context = {
 		tabWidth   : textEditor.options.tabSize as number,
 		useSpaces  : textEditor.options.insertSpaces as boolean,
 		lineWidth  : lineWidth,
@@ -333,7 +333,7 @@ async function wrap_lines(textEditor: vscode.TextEditor, edit: vscode.TextEditor
 		}
 	}
 
-	const results = await wrapText(ctx)
+	const results = await wrap.wrap(ctx)
 
 	function apply(e: vscode.TextEditorEdit)
 	{

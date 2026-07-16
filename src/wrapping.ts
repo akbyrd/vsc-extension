@@ -114,7 +114,7 @@ export type Context = {
 	storage    : Storage,
 }
 
-export type WrapResult = {
+export type Result = {
 	range : Range,
 	text  : string,
 }
@@ -480,8 +480,6 @@ function tokenizeBlock(ctx: Context, block: Block)
 
 function analyzeBlock(ctx: Context, block: Block)
 {
-	// TODO: Split indentation and align when there's no prefix?
-
 	// TODO: This is per-language
 	// TODO: Move to cachePrefixes?
 	const prefixChars  = ["/".charCodeAt(0), "*".charCodeAt(0), "!".charCodeAt(0), "<".charCodeAt(0)]
@@ -678,7 +676,7 @@ function analyzeBlock(ctx: Context, block: Block)
 	}
 }
 
-function wrapBlock(ctx: Context, block: Block): WrapResult
+function wrapBlock(ctx: Context, block: Block): Result
 {
 	// NOTE: Whitespace and line prefixes are normalized. This means:
 	// * Converted to tabs or spaces based on editor settings
@@ -822,7 +820,7 @@ function wrapBlock(ctx: Context, block: Block): WrapResult
 	return { text, range: block.range }
 }
 
-export async function wrapText(ctx: Context): Promise<WrapResult[]>
+export async function wrap(ctx: Context): Promise<Result[]>
 {
 	console.assert(ctx.tabWidth > 0)
 	console.assert(ctx.lineWidth >= 0)
@@ -830,7 +828,7 @@ export async function wrapText(ctx: Context): Promise<WrapResult[]>
 	const parse  = await parseDocument(ctx)
 	const blocks = gatherBlocks(ctx, parse)
 
-	const results: WrapResult[] = []
+	const results: Result[] = []
 	for (const block of blocks)
 	{
 		tokenizeBlock(ctx, block)
@@ -903,12 +901,7 @@ const languages: Record<string, LanguageData> = {
 	},
 }
 
-// TODO: I don't think bullet + doxygen will be handled correctly
-// TODO: Split indentation and custom whitespace
-// TODO: Change customPrefix slice to a lazy resolve
-// TODO: Better exporting from this file
 // TODO: Handle overlapping queries (due to character expand)
-
 // TODO: Check for newer tree sitter module version
 // TODO: Handle multiple fetches at the same time
 // TODO: Multi-thread tests (and synchronize tests around disk access)
