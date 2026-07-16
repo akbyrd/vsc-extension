@@ -85,7 +85,10 @@ async function doWrap(s: string, override?: Partial<wrap.Context>): Promise<stri
 		const overlaps = order < 0
 
 		if (overlaps)
-			throw new Error(`ranges overlap:\n\t${i - 1}: ${toString(prev)}\n\t${i}: ${toString(curr)}`)
+		{
+			const message = `ranges overlap:\n\t${i - 1}: ${toString(prev)}\n\t${i}: ${toString(curr)}`
+			throw new Error(message)
+		}
 	}
 
 	for (const result of results.reverse())
@@ -623,4 +626,25 @@ describe("block comments", () =>
 		const s1 = new wrap.Range(new wrap.Position(0, 2), new wrap.Position(0, 3))
 		it("overlapping selection", () => test("/* asd */", "/* asd */\n", { selections: [ s0, s1 ] }))
 	})
+})
+
+
+it("unique file names", () =>
+{
+	const names = new Map<string, [string, wrap.LanguageData]>()
+	for (const pair of Object.entries(wrap.languages))
+	{
+		const url      = new URL(pair[1].grammar)
+		const key      = url.pathname.slice(url.pathname.lastIndexOf("/") + 1)
+		const existing = names.get(key)
+
+		if (existing)
+		{
+			const msg = `duplicate file name: ${key}`
+			const l2 = `\n\t${existing[0]}: ${existing[1].grammar}`
+			const l3 = `\n\t${pair[0]}: ${pair[1].grammar}`
+			throw new Error(msg + l2 + l3)
+		}
+		names.set(key, pair)
+	}
 })

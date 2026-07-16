@@ -137,7 +137,7 @@ function makePrefixSet(s0: string, s1?: string, s2?: string): PrefixSet
 	]
 }
 
-type LanguageData = {
+export type LanguageData = {
 	grammar      : string,
 	lineComment  : PrefixSet,
 	blockComment : PrefixSet,
@@ -837,7 +837,7 @@ const cache = new Cache()
 
 // TODO: lua, powershell, toml, yaml, xml, markdown
 // NOTE: File names (last path segment) are expected to be unique. Used for the local file cache.
-const languages: Record<string, LanguageData> = {
+export const languages: Record<string, LanguageData> = {
 	c: {
 		grammar: "https://github.com/tree-sitter/tree-sitter-c/releases/latest/download/tree-sitter-c.wasm",
 		lineComment: makePrefixSet("//"),
@@ -897,7 +897,6 @@ const languages: Record<string, LanguageData> = {
 
 // TODO: Check for newer tree sitter module version
 // TODO: Handle multiple fetches at the same time
-// TODO: Add a test to ensure file names are unique for grammars
 // TODO: Implement plaintext support
 // TODO: Figure out how to handle code in markdown / other embedded languages
 
