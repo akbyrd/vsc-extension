@@ -57,7 +57,7 @@ async function doWrap(s: string, override?: Partial<wrap.Context>): Promise<stri
 
 	const languageId = "cpp"
 	const begin      = new wrap.Position(0, 0)
-	const end        = new wrap.Position(newLines.length - 2, newLines.at(-1))
+	const end        = new wrap.Position(newLines.length - 2, s.length - newLines.at(-2)!)
 	const selection  = new wrap.Range(begin, end)
 
 	const ctx : wrap.Context = {
