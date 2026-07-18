@@ -203,6 +203,7 @@ type Block = {
 	tokens      : Token[],
 	indentWidth : number,
 	runCount    : number,
+	isContinued : boolean,
 }
 
 function toPosition(p: ts.Point): Position
@@ -279,6 +280,7 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 	if (parse)
 	{
 		const languageData = languages[ctx.languageId]
+		const allowLineContinue = ctx.languageId === "c" || ctx.languageId === "cpp"
 		cachePrefixes(languageData.lineComment)
 		cachePrefixes(languageData.blockComment)
 
@@ -303,6 +305,8 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 				const text        = capture.node.text
 				const lineComment = languageData.lineComment[0].chars
 				const isLine      = !!lineComment && text.startsWith(lineComment)
+				const isMultiline = capture.node.startPosition.row !== capture.node.endPosition.row
+				const isContinued = allowLineContinue && isMultiline
 
 				// NOTE: A few cases where this can happen:
 				// * Multiple selections may exist in the same comment.
@@ -318,37 +322,49 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 					// expand to include immediately adjacent line comments above and below (while
 					// being careful not to end up with overlapping blocks).
 
+					// NOTE: Multi-line line comments (i.e. those that have a trailing '\') are not
+					// merged: the sibling walks assume single-row nodes and merging buys nothing. The
+					// continuations themselves are dropped when wrapping. They are semantically inert
+					// (comments become a single space before the preprocessor runs, so a continuation
+					// inside a comment never affects a macro body) and normalizing them away also
+					// defuses the comment-swallows-code trap (-Wcomment).
+
 					var startNode : ts.Node = capture.node
 					var endNode   : ts.Node = capture.node
 
-					while (true)
+					if (!isContinued)
 					{
-						const node       = startNode.previousSibling
-						const isComment  = node?.type === "comment"
-						const isLine     = node?.text.startsWith(lineComment)
-						const isAdjacent = node?.startPosition.row === startNode.startPosition.row - 1
-						const isTrailing = node?.startPosition.row === node?.previousSibling?.endPosition.row
-						if (isComment && isLine && isAdjacent && !isTrailing)
+						while (true)
 						{
-							startNode = node
-							continue
+							const node        = startNode.previousSibling
+							const isComment   = node?.type === "comment"
+							const isLine      = node?.text.startsWith(lineComment)
+							const isSingleRow = node?.startPosition.row === node?.endPosition.row
+							const isAdjacent  = node?.startPosition.row === startNode.startPosition.row - 1
+							const isTrailing  = node?.startPosition.row === node?.previousSibling?.endPosition.row
+							if (isComment && isLine && isSingleRow && isAdjacent && !isTrailing)
+							{
+								startNode = node
+								continue
+							}
+							break
 						}
-						break
-					}
 
-					while (true)
-					{
-						const node       = endNode.nextSibling
-						const isComment  = node?.type === "comment"
-						const isLine     = node?.text.startsWith(lineComment)
-						const isAdjacent = node?.startPosition.row === endNode.startPosition.row + 1
-						const isTrailing = endNode.startPosition.row === endNode.previousSibling?.endPosition.row
-						if (isComment && isLine && isAdjacent && !isTrailing)
+						while (true)
 						{
-							endNode = node
-							continue
+							const node        = endNode.nextSibling
+							const isComment   = node?.type === "comment"
+							const isLine      = node?.text.startsWith(lineComment)
+							const isSingleRow = node?.startPosition.row === node?.endPosition.row
+							const isAdjacent  = node?.startPosition.row === endNode.startPosition.row + 1
+							const isTrailing  = endNode.startPosition.row === endNode.previousSibling?.endPosition.row
+							if (isComment && isLine && isSingleRow && isAdjacent && !isTrailing)
+							{
+								endNode = node
+								continue
+							}
+							break
 						}
-						break
 					}
 
 					const isTrailing = startNode.previousSibling?.endPosition.row === startNode.startPosition.row
@@ -366,6 +382,7 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 						tokens:      [],
 						indentWidth: 0,
 						runCount:    0,
+						isContinued: isContinued,
 					})
 				}
 				else
@@ -387,6 +404,7 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 						tokens:      [],
 						indentWidth: 0,
 						runCount:    0,
+						isContinued: false,
 					})
 				}
 			}
@@ -407,6 +425,7 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 				tokens:      [],
 				indentWidth: 0,
 				runCount:    0,
+				isContinued: false,
 			})
 		}
 	}
@@ -417,7 +436,8 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 function tokenizeBlock(ctx: Context, block: Block)
 {
 	// NOTE: Can't use y because we want to skip whitespace
-	const tokenRe = /\S+/g
+	const tokenRe   = /\S+/g
+	const backslash = "\\".charCodeAt(0)
 
 	switch (block.type)
 	{
@@ -449,15 +469,49 @@ function tokenizeBlock(ctx: Context, block: Block)
 					block.tokens.push({
 						begin: match.index,
 						end:   Math.min(tokenRe.lastIndex, rLine.end.character),
+						//end:   tokenRe.lastIndex,
 					})
+				}
+
+				// Trim line comment continuations ('\')
+				if (block.type === BlockType.lineComment)
+				{
+					if (block.isContinued && lineInfo.tokenEnd > lineInfo.tokenBegin)
+					{
+						const token   = block.tokens.at(-1)!
+						const isSlash = line.text.charCodeAt(token.end - 1) === backslash
+						const atEnd   = token.end === line.text.length
+						if (isSlash && atEnd)
+						{
+							token.end--
+							if (token.begin === token.end) lineInfo.tokenEnd--
+						}
+					}
+				}
+
+				// Preserve block comment continuations ('\')
+				if (block.type === BlockType.blockComment)
+				{
+					if (iLine === block.range.end.line)
+					{
+						const token             = block.tokens.at(-1)!
+						const isSlash           = line.text.charCodeAt(line.text.length - 1) === backslash
+						const isLeading         = block.maxChar !== Number.POSITIVE_INFINITY
+						const allowLineContinue = ctx.languageId === "c" || ctx.languageId === "cpp"
+						if (isSlash && !isLeading && allowLineContinue)
+						{
+							block.isContinued = true
+							block.maxChar = Math.min(block.maxChar, token.end)
+						}
+					}
 				}
 			}
 
 			// TODO: Try this (needs to deal with last token not on last line?)
 			//if (block.tokens.length)
 			//{
-			//	const token = block.tokens.at(-1)!
-			//	token.end = Math.min(token.end, block.range.end.character)
+				//const token = block.tokens.at(-1)!
+				//token.end = Math.min(token.end, block.range.end.character)
 			//}
 			break
 		}
@@ -586,9 +640,10 @@ function analyzeBlock(ctx: Context, block: Block)
 			for (var i = lineInfo.tokenBegin; i < lineInfo.tokenEnd; i++)
 			{
 				const token = block.tokens[i]
+				const len = token.end - token.begin
 
 				const firstChar = lineInfo.text.charCodeAt(token.begin)
-				if (doxygenLeaders.includes(firstChar))
+				if (doxygenLeaders.includes(firstChar) && len > 1)
 				{
 					doxygenRe.lastIndex = token.begin + 1
 					if (!doxygenRe.exec(lineInfo.text))
@@ -683,6 +738,7 @@ function wrapBlock(ctx: Context, block: Block): Result
 	const isTrailing   = block.minChar > 0
 	const isLeading    = block.maxChar < Number.POSITIVE_INFINITY
 	const isSingleLine = (isLeading || isTrailing) && block.runCount === 1
+	const isContinued  = block.type === BlockType.blockComment && block.isContinued
 	const lineWidth    = isSingleLine ? Number.POSITIVE_INFINITY : ctx.lineWidth
 	const indent       = ctx.useSpaces ? " ".repeat(block.indentWidth) : "\t".repeat(block.indentWidth / ctx.tabWidth)
 	const p1           = block.prefixes[1]
@@ -799,8 +855,8 @@ function wrapBlock(ctx: Context, block: Block): Result
 	if (!isLeading  || lines.length !== 1) block.range.end.character   = block.maxChar
 
 	// Push multi-line comments onto separate lines
-	if (isTrailing && lines.length > 1) lines.splice(0, 0, "")
-	if (isLeading  && lines.length > 1) lines.push(indent)
+	if (isTrailing && lines.length > 1 && !isContinued) lines.splice(0, 0, "")
+	if (isLeading  && lines.length > 1 && !isContinued) lines.push(indent)
 
 	// Always emit a final newline
 	if (!isLeading) lines.push("")

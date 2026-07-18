@@ -298,6 +298,8 @@ describe("line comments", () =>
 		it("11",                () => test("// asd\n// @:: asd",           "// asd @:: asd\n"))
 		it("12",                () => test("// asd @ref asd",              "// asd @ref asd\n"))
 		it("13",                () => test("// @ref @ref",                 "// @ref @ref\n"))
+		it("14",                () => test("// asd @ asd",                 "// asd @ asd\n"))
+		it("15",                () => test("// asd \\ asd",                "// asd \\ asd\n"))
 		it("with indent",       () => test("\t// @ref asd",                "\t// @ref asd\n"))
 		it("with head-space 1", () => test("//@ref asd",                   "// @ref asd\n"))
 		it("with head-space 2", () => test("//@ref\n// asd",               "// @ref asd\n"))
@@ -341,11 +343,40 @@ describe("line comments", () =>
 		it("with doxygen",    () => test("// @endcode", "// @endcode\n"))
 	})
 
+	// Test continuations
+	describe("continuation", () =>
+	{
+		it("1",                () => test("// asd \\",                  "// asd\n"))
+		it("2",                () => test("// asd \\\n",                "// asd\n"))
+		it("3",                () => test("// asd \\\n\n",              "// asd\n"))
+		it("4",                () => test("// asd \\\nasd",             "// asd asd\n"))
+		it("5",                () => test("// asd \\\nasd \\\nasd",     "// asd asd asd\n"))
+		it("6",                () => test("// asd \\ asd",              "// asd \\ asd\n"))
+		it("7",                () => test("// asd\n// asd \\\nasd",     "// asd\n// asd asd\n"))
+		it("8",                () => test("// asd \\\nasd\n// asd",     "// asd asd\n// asd\n"))
+		it("9",                () => test("# asd \\\n# asd",            "# asd \\ asd\n",    { languageId: "shellscript" }))
+		it("with indent",      () => test("\t// asd \\",                "\t// asd\n"))
+		it("with head-space",  () => test("//asd \\",                   "// asd\n"))
+		it("with tail-space",  () => test("//asd\\",                    "// asd\n"))
+		it("with prefix",      () => test("/// asd \\",                 "/// asd\n"))
+		it("with trailing 1",  () => test("0; // asd \\",               "0; // asd\n"))
+		it("with trailing 2",  () => test("0; // asd \\\n",             "0; // asd\n"))
+		it("with trailing 3",  () => test("0; // asd \\\nasd",          "0; // asd asd\n",   { lineWidth: 0 }))
+		it("with trailing 4",  () => test("0; // asd @see asd \\\nasd", "0;\n// asd\n// @see asd asd\n"))
+		it("with multiline 1", () => test("// asd \\\n\nint x;",        "// asd\nint x;"))
+		it("with multiline 2", () => test("// asd \\\n\t\nint x;",      "// asd\nint x;"))
+		it("with multiline 3", () => test("// asd \\\n\t\n\tint x;",    "// asd\n\tint x;"))
+		it("with narrow",      () => test("// asd \\\nasd",             "// asd\n// asd\n",  { lineWidth: 0 }))
+		it("with bullet",      () => test("// * asd \\",                "// * asd\n"))
+		it("with newline",     () => test("// asd \\\n\n// asd",        "// asd\n// asd\n"))
+		it("with doxygen",     () => test("// @ref asd \\",             "// @ref asd\n"))
+	})
+
 	describe("misc", () =>
 	{
 		const s0 = new wrap.Range(new wrap.Position(0, 0), new wrap.Position(0, 1))
 		const s1 = new wrap.Range(new wrap.Position(0, 2), new wrap.Position(0, 3))
-		it("overlapping selection", () => test("// asd", "// asd\n", { selections: [ s0, s1 ] }))
+		it("overlapping selection", () => test("// asd",                 "// asd\n", { selections: [ s0, s1 ] }))
 	})
 })
 
@@ -564,6 +595,8 @@ describe("block comments", () =>
 		it("11",                () => test("/* asd\n * @:: asd */",             "/* asd @:: asd */\n"))
 		it("12",                () => test("/* asd @ref asd */",                "/* asd @ref asd */\n"))
 		it("13",                () => test("/* @ref @ref */",                   "/* @ref @ref */\n"))
+		it("14",                () => test("/* asd @ asd */",                   "/* asd @ asd */\n"))
+		it("15",                () => test("/* asd \\ asd */",                  "/* asd \\ asd */\n"))
 		it("with indent",       () => test("\t/* @see asd */",                  "\t/* @see asd */\n"))
 		it("with head-space 1", () => test("/*@ref asd */",                     "/* @ref asd */\n"))
 		it("with head-space 2", () => test("/*@ref\n* asd */",                  "/* @ref asd */\n"))
@@ -624,7 +657,11 @@ describe("block comments", () =>
 	{
 		const s0 = new wrap.Range(new wrap.Position(0, 0), new wrap.Position(0, 1))
 		const s1 = new wrap.Range(new wrap.Position(0, 2), new wrap.Position(0, 3))
-		it("overlapping selection", () => test("/* asd */", "/* asd */\n", { selections: [ s0, s1 ] }))
+		it("overlapping selection", () => test("/* asd */",           "/* asd */\n", { selections: [ s0, s1 ] }))
+		it("no continuation 1",     () => test("/* asd */ \\",        "/* asd */ \\"))
+		it("no continuation 2",     () => test("/* asd */ \\\n",      "/* asd */ \\\n"))
+		it("no continuation 3",     () => test("/* asd */  \\\n",     "/* asd */  \\\n"))
+		it("no continuation 4",     () => test("/* asd @see */ \\\n", "/*\n * asd\n * @see\n */ \\\n"))
 	})
 })
 
