@@ -193,17 +193,18 @@ type LineInfo = {
 }
 
 type Block = {
-	type        : BlockType,
-	range       : Range
-	minChar     : number
-	maxChar     : number
-	languageId  : string
-	lineInfos   : LineInfo[],
-	prefixes    : PrefixSet,
-	tokens      : Token[],
-	indentWidth : number,
-	runCount    : number,
-	isContinued : boolean,
+	type         : BlockType,
+	range        : Range
+	minChar      : number
+	maxChar      : number
+	languageId   : string
+	lineInfos    : LineInfo[],
+	prefixes     : PrefixSet,
+	tokens       : Token[],
+	indentWidth  : number,
+	runCount     : number,
+	wasContinued : boolean,
+	isContinued  : boolean,
 }
 
 function toPosition(p: ts.Point): Position
@@ -302,11 +303,11 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 
 			for (const capture of captures)
 			{
-				const text        = capture.node.text
-				const lineComment = languageData.lineComment[0].chars
-				const isLine      = !!lineComment && text.startsWith(lineComment)
-				const isMultiline = capture.node.startPosition.row !== capture.node.endPosition.row
-				const isContinued = allowLineContinue && isMultiline
+				const text         = capture.node.text
+				const lineComment  = languageData.lineComment[0].chars
+				const isLine       = !!lineComment && text.startsWith(lineComment)
+				const isMultiline  = capture.node.startPosition.row !== capture.node.endPosition.row
+				const wasContinued = allowLineContinue && isMultiline
 
 				// NOTE: A few cases where this can happen:
 				// * Multiple selections may exist in the same comment.
@@ -332,7 +333,7 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 					var startNode : ts.Node = capture.node
 					var endNode   : ts.Node = capture.node
 
-					if (!isContinued)
+					if (!wasContinued)
 					{
 						while (true)
 						{
@@ -372,17 +373,18 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 					const maxChar    = Number.POSITIVE_INFINITY
 
 					blocks.push({
-						type:        BlockType.lineComment,
-						range:       new Range(toPosition(startNode.startPosition), toPosition(endNode.endPosition)),
-						minChar:     minChar,
-						maxChar:     maxChar,
-						languageId:  ctx.languageId,
-						lineInfos:   [],
-						prefixes:    structuredClone(languageData.lineComment),
-						tokens:      [],
-						indentWidth: 0,
-						runCount:    0,
-						isContinued: isContinued,
+						type:         BlockType.lineComment,
+						range:        new Range(toPosition(startNode.startPosition), toPosition(endNode.endPosition)),
+						minChar:      minChar,
+						maxChar:      maxChar,
+						languageId:   ctx.languageId,
+						lineInfos:    [],
+						prefixes:     structuredClone(languageData.lineComment),
+						tokens:       [],
+						indentWidth:  0,
+						runCount:     0,
+						wasContinued: wasContinued,
+						isContinued:  false,
 					})
 				}
 				else
@@ -394,17 +396,18 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 					const maxChar    = isLeading  ? node.nextSibling.startPosition.column   : Number.POSITIVE_INFINITY
 
 					blocks.push({
-						type:        BlockType.blockComment,
-						range:       new Range(toPosition(node.startPosition), toPosition(node.endPosition)),
-						minChar:     minChar,
-						maxChar:     maxChar,
-						languageId:  ctx.languageId,
-						lineInfos:   [],
-						prefixes:    structuredClone(languageData.blockComment),
-						tokens:      [],
-						indentWidth: 0,
-						runCount:    0,
-						isContinued: false,
+						type:         BlockType.blockComment,
+						range:        new Range(toPosition(node.startPosition), toPosition(node.endPosition)),
+						minChar:      minChar,
+						maxChar:      maxChar,
+						languageId:   ctx.languageId,
+						lineInfos:    [],
+						prefixes:     structuredClone(languageData.blockComment),
+						tokens:       [],
+						indentWidth:  0,
+						runCount:     0,
+						wasContinued: false,
+						isContinued:  false,
 					})
 				}
 			}
@@ -415,17 +418,18 @@ function gatherBlocks(ctx: Context, parse: Parse|undefined): Block[]
 		for (const selection of ctx.selections)
 		{
 			blocks.push({
-				type:        BlockType.prose,
-				range:       selection,
-				minChar:     0,
-				maxChar:     Number.POSITIVE_INFINITY,
-				languageId:  ctx.languageId,
-				lineInfos:   [],
-				prefixes:    makePrefixSet(""),
-				tokens:      [],
-				indentWidth: 0,
-				runCount:    0,
-				isContinued: false,
+				type:         BlockType.prose,
+				range:        selection,
+				minChar:      0,
+				maxChar:      Number.POSITIVE_INFINITY,
+				languageId:   ctx.languageId,
+				lineInfos:    [],
+				prefixes:     makePrefixSet(""),
+				tokens:       [],
+				indentWidth:  0,
+				runCount:     0,
+				wasContinued: false,
+				isContinued:  false,
 			})
 		}
 	}
@@ -475,7 +479,7 @@ function tokenizeBlock(ctx: Context, block: Block)
 				// Trim line comment continuations ('\')
 				if (block.type === BlockType.lineComment)
 				{
-					if (block.isContinued && lineInfo.tokenEnd > lineInfo.tokenBegin)
+					if (block.wasContinued && lineInfo.tokenEnd > lineInfo.tokenBegin)
 					{
 						const token   = block.tokens.at(-1)!
 						const isSlash = line.text.charCodeAt(token.end - 1) === backslash
@@ -493,14 +497,13 @@ function tokenizeBlock(ctx: Context, block: Block)
 				{
 					if (iLine === block.range.end.line)
 					{
-						const token             = block.tokens.at(-1)!
 						const isSlash           = line.text.charCodeAt(line.text.length - 1) === backslash
-						const isLeading         = block.maxChar !== Number.POSITIVE_INFINITY
 						const allowLineContinue = ctx.languageId === "c" || ctx.languageId === "cpp"
-						if (isSlash && !isLeading && allowLineContinue)
+						if (isSlash && allowLineContinue)
 						{
 							block.isContinued = true
-							block.maxChar = Math.min(block.maxChar, token.end)
+							if (block.maxChar === line.text.length - 1)
+								block.maxChar = Number.POSITIVE_INFINITY
 						}
 					}
 				}
@@ -730,7 +733,6 @@ function wrapBlock(ctx: Context, block: Block): Result
 	const isTrailing   = block.minChar > 0
 	const isLeading    = block.maxChar < Number.POSITIVE_INFINITY
 	const isSingleLine = (isLeading || isTrailing) && block.runCount === 1
-	const isContinued  = block.type === BlockType.blockComment && block.isContinued
 	const lineWidth    = isSingleLine ? Number.POSITIVE_INFINITY : ctx.lineWidth
 	const indent       = ctx.useSpaces ? " ".repeat(block.indentWidth) : "\t".repeat(block.indentWidth / ctx.tabWidth)
 	const p1           = block.prefixes[1]
@@ -842,16 +844,21 @@ function wrapBlock(ctx: Context, block: Block): Result
 	// * Pro: We could normalize whitespace
 	// * Con: We have to do more work to deal with whitespace
 
+	// TODO: Try to simplify this case
+
 	// Extend the range to normalize adjacent whitespace
-	if (!isTrailing || lines.length !== 1) block.range.start.character = block.minChar
-	if (!isLeading  || lines.length !== 1) block.range.end.character   = block.maxChar
+	if (!isTrailing || (lines.length !== 1 && !block.isContinued)) block.range.start.character = block.minChar
+	if ((!isLeading || lines.length !== 1) && !block.isContinued)  block.range.end.character   = block.maxChar
 
-	// Push multi-line comments onto separate lines
-	if (isTrailing && lines.length > 1 && !isContinued) lines.splice(0, 0, "")
-	if (isLeading  && lines.length > 1 && !isContinued) lines.push(indent)
+	if (!block.isContinued)
+	{
+		// Push multi-line comments onto separate lines
+		if (isTrailing && lines.length > 1) lines.splice(0, 0, "")
+		if (isLeading  && lines.length > 1) lines.push(indent)
 
-	// Always emit a final newline
-	if (!isLeading) lines.push("")
+		// Always emit a final newline
+		if (!isLeading) lines.push("")
+	}
 
 	const text = lines.join('\n')
 	return { text, range: block.range }

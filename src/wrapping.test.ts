@@ -653,17 +653,40 @@ describe("block comments", () =>
 		it("with doxygen",    () => test("/* @endcode */", "/* @endcode */\n"))
 	})
 
+	describe("continuation", () =>
+	{
+		it("1",               () => test("/* asd */\\",                   "/* asd */\\"))
+		it("2",               () => test("/* asd */ \\",                  "/* asd */ \\"))
+		it("3",               () => test("/* asd */ \\\n",                "/* asd */ \\\n"))
+		it("4",               () => test("/* asd */  \\\n",               "/* asd */  \\\n"))
+		it("5",               () => test("/* asd @see */\\\n",            "/*\n * asd\n * @see\n */\\\n"))
+		it("6",               () => test("/* asd @see */ \\\n",           "/*\n * asd\n * @see\n */ \\\n"))
+		it("with indent 1",   () => test("\t/* asd */ \\\n",              "\t/* asd */ \\\n"))
+		it("with indent 2",   () => test("\t/* asd @see */ \\\n",         "\t/*\n\t * asd\n\t * @see\n\t */ \\\n"))
+		it("with head-space", () => test("/*asd */ \\",                   "/* asd */ \\")),
+		it("with tail-space", () => test("/* asd*/ \\",                   "/* asd */ \\")),
+		it("with prefix",     () => test("/** asd */ \\",                 "/** asd */ \\")),
+		it("with suffix",     () => test("/* asd **/ \\",                 "/* asd **/ \\")),
+		it("with leading 1",  () => test("/* asd */ int x; \\",           "/* asd */ int x; \\")),
+		it("with leading 2",  () => test("/* asd @see */ int x; \\\n",    "/*\n * asd\n * @see\n */ int x; \\\n"))
+		it("with leading 3",  () => test("\t/* asd @see */ int x; \\\n",  "\t/*\n\t * asd\n\t * @see\n\t */ int x; \\\n"))
+		it("with trailing",   () => test("0; /* asd */ \\",               "0; /* asd */ \\")),
+		it("with embedded 1", () => test("0; /* asd */ int x; \\",        "0; /* asd */ int x; \\")),
+		it("with embedded 2", () => test("0; /* asd @see */ int x; \\\n", "0; /*\n * asd\n * @see\n */ int x; \\\n"))
+		it("with multiline",  () => test("/*\n * asd\n */ \\",            "/* asd */ \\")),
+		it("with narrow 1",   () => test("/* asd asd */ \\",              "/*\n * asd\n * asd\n */ \\", { lineWidth: 0 })),
+		it("with narrow 2",   () => test("/* asd asd */ int x; \\",       "/* asd asd */ int x; \\",    { lineWidth: 0 })),
+		it("with narrow 3",   () => test("0; /* asd asd */ \\",           "0; /* asd asd */ \\",        { lineWidth: 0 })),
+		it("with bullet",     () => test("/* * asd */ \\",                "/* * asd */ \\")),
+		it("with newline",    () => test("/* asd\n\nasd */ \\",           "/*\n * asd\n *\n * asd\n */ \\")),
+		it("with doxygen",    () => test("0; /* asd @see */ \\\nasd",     "0; /*\n * asd\n * @see\n */ \\\nasd"))
+	})
+
 	describe("misc", () =>
 	{
 		const s0 = new wrap.Range(new wrap.Position(0, 0), new wrap.Position(0, 1))
 		const s1 = new wrap.Range(new wrap.Position(0, 2), new wrap.Position(0, 3))
-		it("overlapping selection", () => test("/* asd */",           "/* asd */\n", { selections: [ s0, s1 ] }))
-		it("no continuation 1",     () => test("/* asd */\\",         "/* asd */\\"))
-		it("no continuation 2",     () => test("/* asd */ \\",        "/* asd */ \\"))
-		it("no continuation 3",     () => test("/* asd */ \\\n",      "/* asd */ \\\n"))
-		it("no continuation 4",     () => test("/* asd */  \\\n",     "/* asd */  \\\n"))
-		it("no continuation 5",     () => test("/* asd @see */\\\n",  "/*\n * asd\n * @see\n */\\\n"))
-		it("no continuation 6",     () => test("/* asd @see */ \\\n", "/*\n * asd\n * @see\n */ \\\n"))
+		it("overlapping selection", () => test("/* asd */", "/* asd */\n", { selections: [ s0, s1 ] }))
 	})
 })
 
