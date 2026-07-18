@@ -469,7 +469,6 @@ function tokenizeBlock(ctx: Context, block: Block)
 					block.tokens.push({
 						begin: match.index,
 						end:   Math.min(tokenRe.lastIndex, rLine.end.character),
-						//end:   tokenRe.lastIndex,
 					})
 				}
 
@@ -506,13 +505,6 @@ function tokenizeBlock(ctx: Context, block: Block)
 					}
 				}
 			}
-
-			// TODO: Try this (needs to deal with last token not on last line?)
-			//if (block.tokens.length)
-			//{
-				//const token = block.tokens.at(-1)!
-				//token.end = Math.min(token.end, block.range.end.character)
-			//}
 			break
 		}
 
